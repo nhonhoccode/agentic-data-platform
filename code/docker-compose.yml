@@ -1,0 +1,133 @@
+x-common-env: &common-env
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: 5432
+  POSTGRES_DB: olist
+  POSTGRES_USER: olist
+  POSTGRES_PASSWORD: olist
+  APP_API_KEY: ${APP_API_KEY:-change-me}
+  LLM_PROVIDER: ${LLM_PROVIDER:-none}
+  LLM_ENABLE_THINKING: ${LLM_ENABLE_THINKING:-false}
+  GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+  DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+  MODEL_API_BASE: ${MODEL_API_BASE:-}
+  TEMPERATURE: ${TEMPERATURE:-0}
+  BASE_URL: ${BASE_URL:-}
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: olist-postgres
+    environment:
+      POSTGRES_DB: olist
+      POSTGRES_USER: olist
+      POSTGRES_PASSWORD: olist
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U olist -d olist"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./docker/source_init.sql:/docker-entrypoint-initdb.d/source_init.sql:ro
+
+  bootstrap:
+    build:
+      context: .
+      dockerfile: docker/api/Dockerfile
+    container_name: olist-bootstrap
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *common-env
+      DATA_DIR: /opt/project/data
+    volumes:
+      - ./:/opt/project
+    command: bash /opt/project/scripts/bootstrap_data.sh
+    restart: "no"
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/api/Dockerfile
+    container_name: olist-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *common-env
+      DATA_DIR: /opt/project/data
+      APP_PORT: 8000
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./:/opt/project
+
+  airflow-init:
+    build:
+      context: .
+      dockerfile: docker/airflow/Dockerfile
+    container_name: olist-airflow-init
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *common-env
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://olist:olist@postgres:5432/olist
+      AIRFLOW_HOME: /opt/airflow
+    volumes:
+      - ./:/opt/project
+      - airflow_logs:/opt/airflow/logs
+    command: >
+      bash -c "airflow db migrate &&
+      airflow users create --role Admin --username admin --password admin --firstname Admin --lastname User --email admin@example.com || true"
+
+  airflow-webserver:
+    build:
+      context: .
+      dockerfile: docker/airflow/Dockerfile
+    container_name: olist-airflow-webserver
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    environment:
+      <<: *common-env
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://olist:olist@postgres:5432/olist
+      AIRFLOW_HOME: /opt/airflow
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./:/opt/project
+      - airflow_logs:/opt/airflow/logs
+    command: webserver
+
+  airflow-scheduler:
+    build:
+      context: .
+      dockerfile: docker/airflow/Dockerfile
+    container_name: olist-airflow-scheduler
+    depends_on:
+      airflow-webserver:
+        condition: service_started
+    environment:
+      <<: *common-env
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://olist:olist@postgres:5432/olist
+      AIRFLOW_HOME: /opt/airflow
+    volumes:
+      - ./:/opt/project
+      - airflow_logs:/opt/airflow/logs
+    command: scheduler
+
+volumes:
+  pg_data:
+  airflow_logs:

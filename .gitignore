@@ -1,0 +1,31 @@
+# Secrets / env
+.env
+*.env
+!.env.example
+code/.env
+
+# Python caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# Packaging
+*.egg-info/
+
+# dbt artifacts
+code/dbt/target/
+code/dbt/logs/
+code/dbt/dbt_packages/
+code/dbt/.user.yml
+
+# Local logs
+*.log
+
+# IDE
+.vscode/
+.idea/
+.DS_Store
+
+# Local archive
+archive.zip

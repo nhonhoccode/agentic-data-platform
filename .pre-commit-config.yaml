@@ -1,0 +1,33 @@
+minimum_pre_commit_version: "3.6.0"
+default_stages: [pre-commit]
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: Ruff Check
+        entry: bash -lc 'cd code && ruff check app tests'
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+
+      - id: pytest-check
+        name: Pytest Check
+        entry: bash -lc 'cd code && pytest'
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: dbt-parse
+        name: dbt Parse Check
+        entry: bash -lc 'cd code/dbt && dbt parse --profiles-dir .'
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
