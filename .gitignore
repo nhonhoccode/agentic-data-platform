@@ -18,3 +18,5 @@ dbt/.user.yml
 .vscode/
 .idea/
 .DS_Store
+
+archive.zip
