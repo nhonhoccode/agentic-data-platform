@@ -148,7 +148,7 @@ def test_ui_proxy_chat_help_contract() -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["mode"] == "help"
-    assert "Commands" in body["assistant_message"]
+    assert "/help" in body["assistant_message"]
     assert body["active_rules"]["allow_sql"] is True
 
 

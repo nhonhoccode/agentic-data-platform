@@ -176,17 +176,9 @@ def _rules_text(rules: UiRuleConfig) -> str:
 
 def _help_text(rules: UiRuleConfig) -> str:
     return (
-        "Bạn có thể chat tự nhiên hoặc dùng slash command.\n\n"
-        "Commands:\n"
-        "- /help\n"
-        "- /kpi [start_date] [end_date]\n"
-        "- /sql <SELECT query>\n"
-        "- /schema <keyword>\n"
-        "- /definition <term>\n"
-        "- /rules\n"
-        "- /rule <agent|kpi|sql|schema|definition> <on|off>\n"
-        "- /rule sql_limit <1-5000>\n"
-        "- /rule reset\n\n"
+        "Bạn có thể chat tự nhiên hoặc dùng lệnh ngắn.\n\n"
+        "Lệnh nhanh:\n"
+        "/help, /kpi, /sql, /schema, /definition, /rules, /rule ...\n\n"
         "Active rules:\n"
         f"{_rules_text(rules)}"
     )
@@ -408,11 +400,6 @@ def ui_home() -> str:
       color: #0c2942;
       border-bottom-left-radius: 4px;
     }
-    .meta {
-      font-size: 11px;
-      color: var(--muted);
-      font-weight: 600;
-    }
     label {
       display: block;
       font-weight: 600;
@@ -482,6 +469,17 @@ def ui_home() -> str:
       max-width: 100%;
       margin: 0;
       width: 100%;
+    }
+    details.raw-json {
+      width: 100%;
+      margin-top: 4px;
+    }
+    details.raw-json summary {
+      cursor: pointer;
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 600;
+      margin: 0 0 6px;
     }
     .table-wrap {
       width: 100%;
@@ -696,10 +694,42 @@ def ui_home() -> str:
       return wrap;
     }
 
+    function rulesFromPayload(payload) {
+      const rules = payload?.result?.rules;
+      if (!rules || typeof rules !== "object") {
+        return null;
+      }
+
+      const wrap = document.createElement("div");
+      wrap.className = "cmd-examples";
+      for (const [key, value] of Object.entries(rules)) {
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "cmd-chip secondary";
+        chip.textContent = `${key}: ${value}`;
+        chip.disabled = true;
+        wrap.appendChild(chip);
+      }
+      return wrap;
+    }
+
     function shouldShowJsonDetail(payload) {
       if (!payload || !payload.result) return false;
-      if (payload.mode === "chitchat" || payload.mode === "help") return false;
-      return true;
+      return ["sql", "schema", "definition", "kpi", "agent", "error"].includes(payload.mode);
+    }
+
+    function rawJsonDetails(payload) {
+      const details = document.createElement("details");
+      details.className = "raw-json";
+      const summary = document.createElement("summary");
+      summary.textContent = "Raw response (optional)";
+      details.appendChild(summary);
+
+      const detail = document.createElement("pre");
+      detail.className = "detail";
+      detail.textContent = JSON.stringify(payload.result, null, 2);
+      details.appendChild(detail);
+      return details;
     }
 
     function appendMessage(role, text, payload) {
@@ -713,27 +743,20 @@ def ui_home() -> str:
       row.appendChild(bubble);
 
       if (payload !== undefined && payload !== null) {
-        const meta = document.createElement("div");
-        meta.className = "meta";
-        const mode = payload.mode ? `mode=${payload.mode}` : "mode=unknown";
-        const blocked = payload.blocked ? "blocked=true" : "blocked=false";
-        meta.textContent = `${mode}, ${blocked}`;
-        row.appendChild(meta);
-
         if (payload.result) {
           const rows = extractRows(payload);
           const table = tableFromRows(rows);
           if (table) {
             row.appendChild(table);
           } else {
+            const rules = rulesFromPayload(payload);
             const suggestions = suggestionsFromPayload(payload);
-            if (suggestions) {
+            if (rules) {
+              row.appendChild(rules);
+            } else if (suggestions) {
               row.appendChild(suggestions);
             } else if (shouldShowJsonDetail(payload)) {
-              const detail = document.createElement("pre");
-              detail.className = "detail";
-              detail.textContent = JSON.stringify(payload.result, null, 2);
-              row.appendChild(detail);
+              row.appendChild(rawJsonDetails(payload));
             }
           }
         }
