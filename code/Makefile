@@ -1,4 +1,4 @@
-.PHONY: install lint test ingest serve dbt-run dbt-test e2e precommit-install precommit-run up down logs-bootstrap
+.PHONY: install lint test ingest serve dbt-run dbt-test e2e precommit-install precommit-run up down logs-bootstrap logs-tunnel
 
 install:
 	uv pip install -e .[dev]
@@ -32,6 +32,9 @@ down:
 
 logs-bootstrap:
 	docker compose logs -f bootstrap
+
+logs-tunnel:
+	docker compose logs -f cloudflared
 
 precommit-install:
 	@if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then \

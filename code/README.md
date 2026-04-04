@@ -59,6 +59,7 @@ This starts:
 - `postgres`
 - `bootstrap` (one-shot ingest + dbt run/test + serving validation)
 - `api` (FastAPI)
+- `cloudflared` (auto quick tunnel for public demo URL)
 - `airflow-init`, `airflow-webserver`, `airflow-scheduler`
 
 ## 3) Open services
@@ -67,11 +68,14 @@ This starts:
 - API docs: `http://localhost:8000/docs`
 - Health endpoint (requires key): `http://localhost:8000/health`
 - Airflow UI: `http://localhost:8080` (user: `admin`, password: `admin`)
+- Public tunnel domain: check with `docker compose logs --tail=80 cloudflared` and open `https://<random>.trycloudflare.com/ui`
+- For custom domain (e.g. `api.votrongnhon.cloud`): set `CLOUDFLARED_COMMAND=tunnel --no-autoupdate run --token <tunnel_token>` in `.env`, then add route in Cloudflare Tunnel -> `Published application routes` (`hostname=api.votrongnhon.cloud`, `service=http://api:8000`).
 
 ## 4) Check bootstrap and readiness
 
 ```bash
 docker compose logs -f bootstrap
+docker compose logs -f cloudflared
 ```
 
 When bootstrap completes successfully, UI/API will read from ready serving tables.

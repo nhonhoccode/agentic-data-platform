@@ -67,6 +67,20 @@ services:
     volumes:
       - ./:/opt/project
 
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: olist-cloudflared
+    depends_on:
+      api:
+        condition: service_started
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    # Default: quick tunnel (auto *.trycloudflare.com).
+    # You can override with CLOUDFLARED_COMMAND in .env for named tunnel mode.
+    command: ${CLOUDFLARED_COMMAND:-tunnel --no-autoupdate --url http://api:8000}
+    restart: unless-stopped
+
   airflow-init:
     build:
       context: .
