@@ -83,7 +83,29 @@ def _insight_node(state: AgentState) -> AgentState:
     }
 
 
+def _chat_node(state: AgentState) -> AgentState:
+    return {
+        **state,
+        "selected_tools": [],
+        "raw_result": {
+            "message_type": "chat",
+            "question": state["question"],
+        },
+        "confidence": 0.7,
+    }
+
+
 def _fallback_summarize(result: dict[str, Any], intent: str) -> str:
+    if intent == "help_request":
+        return (
+            "I can help with KPI summary, schema search, business definitions, "
+            "and read-only SQL analytics. Try /help in UI for examples."
+        )
+    if intent == "chitchat":
+        return (
+            "Hi. Ask naturally about KPI, revenue trends, schema, or business terms, "
+            "and I will route to the right tool."
+        )
     if intent == "schema_search":
         return f"Found {result.get('match_count', 0)} schema matches for your keyword."
     if intent == "business_definition":
@@ -179,6 +201,9 @@ def _build_summarization_llm() -> Any | None:
 
 def _maybe_llm_summarize(state: AgentState) -> str | None:
     try:
+        if state.get("intent") in {"help_request", "chitchat"}:
+            return None
+
         llm = _build_summarization_llm()
         if llm is None:
             return None
@@ -211,6 +236,7 @@ def build_graph() -> Any:
     graph.add_node("sql_agent", _sql_node)
     graph.add_node("retrieval_agent", _retrieval_node)
     graph.add_node("insight_agent", _insight_node)
+    graph.add_node("chat_agent", _chat_node)
     graph.add_node("synthesize", _synthesize_node)
 
     graph.add_edge(START, "classify")
@@ -221,11 +247,13 @@ def build_graph() -> Any:
             "sql_agent": "sql_agent",
             "retrieval_agent": "retrieval_agent",
             "insight_agent": "insight_agent",
+            "chat_agent": "chat_agent",
         },
     )
     graph.add_edge("sql_agent", "synthesize")
     graph.add_edge("retrieval_agent", "synthesize")
     graph.add_edge("insight_agent", "synthesize")
+    graph.add_edge("chat_agent", "synthesize")
     graph.add_edge("synthesize", END)
 
     return graph.compile()

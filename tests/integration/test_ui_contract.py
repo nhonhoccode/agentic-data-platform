@@ -13,6 +13,18 @@ def test_ui_page_returns_html_marker() -> None:
     assert response.status_code == 200
     assert "Olist Data Platform Demo UI" in response.text
     assert "olist-ui-root" in response.text
+    assert "Command Center" in response.text
+
+
+def test_ui_proxy_capabilities_contract() -> None:
+    response = client.get("/ui/proxy/capabilities")
+    assert response.status_code == 200
+    body = response.json()
+    assert "assistant_name" in body
+    assert "can_do" in body
+    assert "quick_commands" in body
+    assert isinstance(body["quick_commands"], list)
+    assert len(body["quick_commands"]) >= 1
 
 
 def test_ui_proxy_kpi_contract(monkeypatch) -> None:
@@ -129,3 +141,70 @@ def test_ui_proxy_definition_contract(monkeypatch) -> None:
     response = client.get("/ui/proxy/definition", params={"term": "gmv"})
     assert response.status_code == 200
     assert response.json()["found"] is True
+
+
+def test_ui_proxy_chat_help_contract() -> None:
+    response = client.post("/ui/proxy/chat", json={"message": "làm được gì"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["mode"] == "help"
+    assert "Commands" in body["assistant_message"]
+    assert body["active_rules"]["allow_sql"] is True
+
+
+def test_ui_proxy_chat_greeting_contract() -> None:
+    response = client.post("/ui/proxy/chat", json={"message": "hi"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["mode"] == "chitchat"
+    assert "Mình đang online" in body["assistant_message"]
+    assert body["result"]["inferred_intent"] == "chitchat"
+
+
+def test_ui_proxy_chat_rule_update_contract() -> None:
+    response = client.post("/ui/proxy/chat", json={"message": "/rule sql off"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["mode"] == "rules_update"
+    assert body["active_rules"]["allow_sql"] is False
+
+
+def test_ui_proxy_chat_sql_blocked_when_rule_off() -> None:
+    response = client.post(
+        "/ui/proxy/chat",
+        json={
+            "message": "/sql SELECT 1",
+            "rules": {"allow_sql": False},
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["mode"] == "sql"
+    assert body["blocked"] is True
+    assert "allow_sql=off" in body["assistant_message"]
+
+
+def test_ui_proxy_chat_agent_contract(monkeypatch) -> None:
+    monkeypatch.setattr(
+        ui_routes,
+        "run_workflow",
+        lambda question, context=None: {
+            "intent": "kpi_summary",
+            "selected_tools": ["get_kpi_summary"],
+            "sql": None,
+            "result_summary": "agent summary",
+            "confidence": 0.91,
+            "warnings": [],
+            "raw_result": {"overview": {"gmv": 1000.0}},
+        },
+    )
+
+    response = client.post(
+        "/ui/proxy/chat",
+        json={"message": "show me monthly trend"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["mode"] == "agent"
+    assert body["assistant_message"] == "agent summary"
+    assert body["result"]["intent"] == "kpi_summary"
