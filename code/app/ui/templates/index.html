@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Olist Data Platform Demo UI</title>
+  <link rel="stylesheet" href="/ui/static/ui.css" />
+</head>
+<body>
+  <main class="shell" id="olist-ui-root">
+    <section class="hero">
+      <h1>Olist Data Platform Demo UI</h1>
+      <p>Hybrid local-first analytics chatbot with runtime rules and guarded SQL.</p>
+      <p class="status" id="bootstrap-status">Checking readiness...</p>
+    </section>
+
+    <section class="card">
+      <h2>Analytics Dashboard <span class="pill">KPI + Trend + Categories</span></h2>
+      <div class="dash-filters">
+        <div>
+          <label for="dash-start">Start date</label>
+          <input id="dash-start" type="date" value="2017-01-01" />
+        </div>
+        <div>
+          <label for="dash-end">End date</label>
+          <input id="dash-end" type="date" value="2018-12-31" />
+        </div>
+        <div>
+          <label>&nbsp;</label>
+          <button id="btn-refresh-dashboard">Refresh Dashboard</button>
+        </div>
+      </div>
+
+      <div class="dash-kpi-grid">
+        <div class="kpi-tile"><p class="kpi-label">Total Orders</p><p class="kpi-value" id="kpi-total-orders">-</p></div>
+        <div class="kpi-tile"><p class="kpi-label">Delivered Rate</p><p class="kpi-value" id="kpi-delivered-rate">-</p></div>
+        <div class="kpi-tile"><p class="kpi-label">GMV</p><p class="kpi-value" id="kpi-gmv">-</p></div>
+        <div class="kpi-tile"><p class="kpi-label">Avg Order Value</p><p class="kpi-value" id="kpi-aov">-</p></div>
+      </div>
+
+      <div class="dash-panels">
+        <div class="dash-panel">
+          <h3>Monthly GMV Trend</h3>
+          <div id="dash-trend" class="trend-chart"></div>
+          <p class="table-note" id="dash-trend-note"></p>
+        </div>
+        <div class="dash-panel">
+          <h3>Top Categories</h3>
+          <div class="table-wrap">
+            <table class="chat-table">
+              <thead><tr><th>Category</th><th>Orders</th><th>Revenue</th></tr></thead>
+              <tbody id="dash-category-body"></tbody>
+            </table>
+          </div>
+          <p class="table-note" id="dash-category-note"></p>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Command Center <span class="pill">Chatbot + Rules</span></h2>
+      <p class="helper" id="capability-hint">Loading capabilities...</p>
+      <div class="chat-log" id="chat-log"></div>
+
+      <label for="cmd-prompt">Prompt</label>
+      <textarea id="cmd-prompt" placeholder="Ask naturally, e.g. show monthly revenue trend and draw chart"></textarea>
+
+      <div class="cmd-actions">
+        <button id="btn-send">Send</button>
+        <button id="btn-help" class="secondary">/help</button>
+        <button id="btn-rules" class="secondary">/rules</button>
+        <button id="btn-clear" class="secondary">Clear</button>
+      </div>
+      <div class="cmd-examples" id="cmd-examples"></div>
+
+      <label class="toggle-debug">
+        <input id="toggle-debug" type="checkbox" />
+        Show raw trace blocks
+      </label>
+    </section>
+
+    <section class="card">
+      <h2>Active Rules</h2>
+      <pre id="out-rules">{}</pre>
+    </section>
+  </main>
+
+  <script src="/ui/static/ui.js" defer></script>
+</body>
+</html>

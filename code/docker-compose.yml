@@ -1,9 +1,14 @@
 x-common-env: &common-env
   POSTGRES_HOST: postgres
   POSTGRES_PORT: 5432
-  POSTGRES_DB: olist
-  POSTGRES_USER: olist
-  POSTGRES_PASSWORD: olist
+  POSTGRES_DB: ${POSTGRES_DB:-olist}
+  POSTGRES_USER: ${POSTGRES_USER:-olist}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-olist}
+  POSTGRES_READONLY_USER: ${POSTGRES_READONLY_USER:-olist_ro}
+  POSTGRES_READONLY_PASSWORD: ${POSTGRES_READONLY_PASSWORD:-olist_ro}
+  DB_POOL_MIN_SIZE: ${DB_POOL_MIN_SIZE:-1}
+  DB_POOL_MAX_SIZE: ${DB_POOL_MAX_SIZE:-8}
+  DB_ENFORCE_READONLY_ROLE: ${DB_ENFORCE_READONLY_ROLE:-true}
   APP_API_KEY: ${APP_API_KEY:-change-me}
   LLM_PROVIDER: ${LLM_PROVIDER:-none}
   LLM_ENABLE_THINKING: ${LLM_ENABLE_THINKING:-false}
@@ -20,9 +25,9 @@ services:
     image: postgres:16
     container_name: olist-postgres
     environment:
-      POSTGRES_DB: olist
-      POSTGRES_USER: olist
-      POSTGRES_PASSWORD: olist
+      POSTGRES_DB: ${POSTGRES_DB:-olist}
+      POSTGRES_USER: ${POSTGRES_USER:-olist}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-olist}
     ports:
       - "5432:5432"
     healthcheck:
@@ -58,6 +63,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      bootstrap:
+        condition: service_completed_successfully
     environment:
       <<: *common-env
       DATA_DIR: /opt/project/data
@@ -76,8 +83,9 @@ services:
     dns:
       - 1.1.1.1
       - 8.8.8.8
-    # Quick Tunnel mode: auto-generates a public *.trycloudflare.com domain.
-    command: tunnel --no-autoupdate --url ${CLOUDFLARED_URL:-http://api:8000}
+    # Default: quick tunnel (auto *.trycloudflare.com).
+    # For production-like public exposure, bind named routes and enforce Cloudflare Access policies.
+    command: ${CLOUDFLARED_COMMAND:-tunnel --no-autoupdate --url http://api:8000}
     restart: unless-stopped
 
   airflow-init:
@@ -92,14 +100,17 @@ services:
       <<: *common-env
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__CORE__LOAD_EXAMPLES: "False"
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://olist:olist@postgres:5432/olist
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER:-olist}:${POSTGRES_PASSWORD:-olist}@postgres:5432/${POSTGRES_DB:-olist}
       AIRFLOW_HOME: /opt/airflow
+      AIRFLOW_ADMIN_USERNAME: ${AIRFLOW_ADMIN_USERNAME:-admin}
+      AIRFLOW_ADMIN_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD:-admin}
+      AIRFLOW_ADMIN_EMAIL: ${AIRFLOW_ADMIN_EMAIL:-admin@example.com}
     volumes:
       - ./:/opt/project
       - airflow_logs:/opt/airflow/logs
     command: >
       bash -c "airflow db migrate &&
-      airflow users create --role Admin --username admin --password admin --firstname Admin --lastname User --email trongnhon29032004@gmail.com || true"
+      airflow users create --role Admin --username \"$${AIRFLOW_ADMIN_USERNAME}\" --password \"$${AIRFLOW_ADMIN_PASSWORD}\" --firstname Admin --lastname User --email \"$${AIRFLOW_ADMIN_EMAIL}\" || true"
 
   airflow-webserver:
     build:
@@ -113,7 +124,7 @@ services:
       <<: *common-env
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__CORE__LOAD_EXAMPLES: "False"
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://olist:olist@postgres:5432/olist
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER:-olist}:${POSTGRES_PASSWORD:-olist}@postgres:5432/${POSTGRES_DB:-olist}
       AIRFLOW_HOME: /opt/airflow
     ports:
       - "8080:8080"
@@ -134,7 +145,7 @@ services:
       <<: *common-env
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__CORE__LOAD_EXAMPLES: "False"
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://olist:olist@postgres:5432/olist
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER:-olist}:${POSTGRES_PASSWORD:-olist}@postgres:5432/${POSTGRES_DB:-olist}
       AIRFLOW_HOME: /opt/airflow
     volumes:
       - ./:/opt/project
