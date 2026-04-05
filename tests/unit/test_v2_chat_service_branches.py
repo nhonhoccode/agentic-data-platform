@@ -13,7 +13,7 @@ def test_run_chat_help_mode() -> None:
 def test_run_chat_rules_mode() -> None:
     result = chat_service.run_chat(ChatRequest(message="/rules"))
     assert result["mode"] == "rules"
-    assert "Current runtime rules" in result["assistant_message"]
+    assert "Quy tắc runtime hiện tại" in result["assistant_message"]
 
 
 def test_run_chat_rule_sql_limit_usage() -> None:

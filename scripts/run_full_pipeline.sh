@@ -1,9 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd /home/maximus_nhonlearningcode/Workspace/DataPlatform/Project/code
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+VENV_PATH="${VENV_PATH:-/home/maximus_nhonlearningcode/Workspace/venv/.venv_Test/bin/activate}"
 
-source /home/maximus_nhonlearningcode/Workspace/venv/.venv_Test/bin/activate
+if [[ ! -f "${VENV_PATH}" ]]; then
+  echo "Venv activate script not found: ${VENV_PATH}" >&2
+  exit 1
+fi
+
+source "${VENV_PATH}"
+cd "${PROJECT_DIR}"
 
 if [[ ! -f .env ]]; then
   cp .env.example .env
@@ -21,6 +29,7 @@ dbt run --profiles-dir .
 dbt test --profiles-dir .
 
 cd ..
+python -m app.db.provision_readonly
 python -m app.transform.serving
 
-echo "Pipeline completed successfully."
+echo "Pipeline completed successfully at ${PROJECT_DIR}."

@@ -98,31 +98,31 @@ def _chat_node(state: AgentState) -> AgentState:
 def _fallback_summarize(result: dict[str, Any], intent: str) -> str:
     if intent == "help_request":
         return (
-            "I can help with KPI summary, schema search, business definitions, "
-            "and read-only SQL analytics. Ask naturally or use /help for commands."
+            "Mình có thể hỗ trợ KPI, tra cứu schema, giải thích business definition "
+            "và truy vấn SQL chỉ đọc. Bạn hỏi tự nhiên hoặc dùng /help để xem lệnh."
         )
     if intent == "chitchat":
         return (
-            "I am online. Ask naturally about KPI, revenue trends, schema, or business terms, "
-            "and I will route to the right tool."
+            "Mình đang online. Bạn có thể hỏi về KPI, xu hướng doanh thu, schema "
+            "hoặc business term, mình sẽ tự route đúng tool."
         )
     if intent == "schema_search":
-        return f"Found {result.get('match_count', 0)} schema matches for your keyword."
+        return f"Đã tìm thấy {result.get('match_count', 0)} kết quả schema theo từ khóa."
     if intent == "business_definition":
         if result.get("found"):
             definition = result["definition"]
             return f"{definition['term']}: {definition['definition']}"
-        return "Definition not found. Please use one of the available terms."
+        return "Không tìm thấy định nghĩa. Bạn thử một thuật ngữ khác nhé."
     if intent == "kpi_summary":
         overview = result.get("overview", {})
         return (
-            "KPI summary loaded: "
+            "Đã tải KPI: "
             f"orders={overview.get('total_orders')}, gmv={overview.get('gmv')}, "
             f"delivered_rate={overview.get('delivered_order_rate')}"
         )
 
     rows = result.get("row_count", 0)
-    return f"Query executed successfully with {rows} rows returned."
+    return f"Truy vấn thành công, trả về {rows} dòng."
 
 
 def _build_summarization_llm() -> Any | None:
@@ -163,23 +163,20 @@ def _build_summarization_llm() -> Any | None:
 
         from langchain_openai import ChatOpenAI
 
-        model_kwargs: dict[str, Any] = {}
+        kwargs: dict[str, Any] = {
+            "model": settings.model_api_base,
+            "api_key": settings.openai_api_key,
+            "base_url": settings.base_url,
+            "temperature": settings.temperature,
+        }
         if not settings.llm_enable_thinking:
-            model_kwargs = {
-                "extra_body": {
-                    "chat_template_kwargs": {
-                        "enable_thinking": False,
-                    }
+            kwargs["extra_body"] = {
+                "chat_template_kwargs": {
+                    "enable_thinking": False,
                 }
             }
 
-        return ChatOpenAI(
-            model=settings.model_api_base,
-            api_key=settings.openai_api_key,
-            base_url=settings.base_url,
-            temperature=settings.temperature,
-            model_kwargs=model_kwargs or None,
-        )
+        return ChatOpenAI(**kwargs)
 
     if provider == "openai":
         if not settings.openai_api_key:
@@ -211,23 +208,23 @@ def _maybe_llm_summarize(state: AgentState) -> str | None:
 
         if intent == "help_request":
             prompt = (
-                "You are an analytics assistant for an e-commerce data platform. "
-                "Respond in the same language as the user's message. "
-                "Give a concise and natural answer describing what you can do, then provide 3 practical examples. "
-                f"User message: {question}"
+                "Bạn là trợ lý phân tích dữ liệu thương mại điện tử. "
+                "Luôn trả lời bằng tiếng Việt tự nhiên, ngắn gọn, dễ hiểu. "
+                "Hãy mô tả bot làm được gì và đưa ra 3 ví dụ thực tế. "
+                f"Câu hỏi người dùng: {question}"
             )
         elif intent == "chitchat":
             prompt = (
-                "You are an analytics assistant for an e-commerce data platform. "
-                "Respond in the same language as the user's message in 2-4 natural sentences. "
-                "Be friendly, mention your analytics capabilities briefly, and suggest one next question. "
-                f"User message: {question}"
+                "Bạn là trợ lý phân tích dữ liệu thương mại điện tử. "
+                "Luôn trả lời bằng tiếng Việt trong 2-4 câu tự nhiên. "
+                "Giọng điệu thân thiện, nêu ngắn gọn khả năng của bạn và gợi ý 1 câu hỏi tiếp theo. "
+                f"Câu hỏi người dùng: {question}"
             )
         else:
             prompt = (
-                "You are an analytics assistant. Summarize the result in <=4 sentences. "
-                "Respond in the same language as the user's message. "
-                f"User message: {question}. Intent={intent}. Result={result_payload}"
+                "Bạn là trợ lý phân tích dữ liệu. "
+                "Luôn trả lời bằng tiếng Việt, tóm tắt kết quả trong tối đa 4 câu. "
+                f"Câu hỏi người dùng: {question}. Intent={intent}. Kết quả={result_payload}"
             )
 
         response = llm.invoke(prompt)
@@ -292,7 +289,7 @@ def run_workflow(question: str, context: dict[str, Any] | None = None) -> dict[s
         "intent": result.get("intent", "unknown"),
         "selected_tools": result.get("selected_tools", []),
         "sql": result.get("sql"),
-        "result_summary": result.get("result_summary", "No summary generated."),
+        "result_summary": result.get("result_summary", "Chưa tạo được tóm tắt."),
         "confidence": float(result.get("confidence", 0.5)),
         "warnings": result.get("warnings", []),
         "raw_result": result.get("raw_result", {}),

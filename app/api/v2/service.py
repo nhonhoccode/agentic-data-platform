@@ -84,7 +84,7 @@ def _help_text(rules: RuleConfig) -> str:
     return (
         "Bạn có thể chat tự nhiên hoặc dùng slash command.\n\n"
         "Commands: /help, /kpi, /sql, /schema, /definition, /rules, /rule ...\n\n"
-        f"Active rules:\n{_rules_text(rules)}"
+        f"Quy tắc đang bật:\n{_rules_text(rules)}"
     )
 
 
@@ -112,10 +112,10 @@ def _apply_rule_command(message: str, rules: RuleConfig) -> tuple[RuleConfig, st
     key = tokens[0].lower()
 
     if key in {"reset", "default"}:
-        return RuleConfig(), "Rules reset to default values."
+        return RuleConfig(), "Đã reset rule về mặc định."
 
     if key in {"show", "status", "list"}:
-        return rules, f"Active rules:\n{_rules_text(rules)}"
+        return rules, f"Quy tắc hiện tại:\n{_rules_text(rules)}"
 
     key_map = {
         "agent": "allow_agent",
@@ -129,7 +129,7 @@ def _apply_rule_command(message: str, rules: RuleConfig) -> tuple[RuleConfig, st
     }
     target = key_map.get(key)
     if target is None:
-        return rules, "Unknown rule target. Use: agent, kpi, sql, schema, definition, sql_limit."
+        return rules, "Không nhận diện được rule target. Dùng: agent, kpi, sql, schema, definition, sql_limit."
 
     updated = rules.model_dump()
     if target == "sql_limit":
@@ -138,22 +138,22 @@ def _apply_rule_command(message: str, rules: RuleConfig) -> tuple[RuleConfig, st
         try:
             limit = int(tokens[1])
         except ValueError:
-            return rules, "sql_limit must be an integer between 1 and 5000."
+            return rules, "sql_limit phải là số nguyên trong khoảng 1..5000."
         if not 1 <= limit <= 5000:
-            return rules, "sql_limit must be between 1 and 5000."
+            return rules, "sql_limit phải nằm trong khoảng 1..5000."
         updated["sql_limit"] = limit
-        return RuleConfig(**updated), f"Updated rule: sql_limit={limit}."
+        return RuleConfig(**updated), f"Đã cập nhật rule: sql_limit={limit}."
 
     if len(tokens) < 2:
         return rules, f"Usage: /rule {key} <on|off>"
 
     value = _bool_from_token(tokens[1])
     if value is None:
-        return rules, "Rule value must be on/off (or true/false)."
+        return rules, "Giá trị rule phải là on/off (hoặc true/false)."
 
     updated[target] = value
     status = "on" if value else "off"
-    return RuleConfig(**updated), f"Updated rule: {key}={status}."
+    return RuleConfig(**updated), f"Đã cập nhật rule: {key}={status}."
 
 
 def _infer_table_columns(rows: list[dict[str, Any]]) -> list[str]:
@@ -283,10 +283,10 @@ def _agent_response_from_workflow(
             rows = raw_result.get("series", [])
 
     blocks: list[Block] = [
-        Block(type="text", payload={"text": result.get("result_summary", "Workflow completed.")})
+        Block(type="text", payload={"text": result.get("result_summary", "Đã hoàn tất workflow.")})
     ]
-    table = _table_block(rows, title="Agent Results")
-    figure = _figure_block(rows, title="Auto Figure")
+    table = _table_block(rows, title="Kết quả từ agent")
+    figure = _figure_block(rows, title="Biểu đồ tự động")
     if table:
         blocks.append(table)
     if figure:
@@ -296,7 +296,7 @@ def _agent_response_from_workflow(
 
     return {
         "mode": mode,
-        "assistant_message": result.get("result_summary", "Workflow completed."),
+        "assistant_message": result.get("result_summary", "Đã hoàn tất workflow."),
         "active_rules": rules,
         "blocks": blocks,
         "trace": _trace(
@@ -342,7 +342,7 @@ def run_chat(payload: ChatRequest) -> dict[str, Any]:
         }
 
     if message_lower in {"/rules", "rules", "show rules", "xem rules"}:
-        text = f"Current runtime rules:\n{_rules_text(rules)}"
+        text = f"Quy tắc runtime hiện tại:\n{_rules_text(rules)}"
         return {
             "mode": "rules",
             "assistant_message": text,
@@ -369,7 +369,7 @@ def run_chat(payload: ChatRequest) -> dict[str, Any]:
 
     if message_lower.startswith("/sql") or message_lower.startswith("sql:"):
         if not rules.allow_sql:
-            text = "Blocked by active rule: SQL is disabled (`allow_sql=off`)."
+            text = "Bị chặn bởi rule đang bật: SQL đã tắt (`allow_sql=off`)."
             return {
                 "mode": "sql",
                 "assistant_message": text,
@@ -392,10 +392,10 @@ def run_chat(payload: ChatRequest) -> dict[str, Any]:
         result = service.query_data(sql_text, limit=rules.sql_limit)
         rows = result.get("data", [])
         blocks: list[Block] = [
-            Block(type="text", payload={"text": f"SQL executed successfully. Returned {len(rows)} rows."})
+            Block(type="text", payload={"text": f"Đã chạy SQL thành công. Trả về {len(rows)} dòng."})
         ]
-        table = _table_block(rows, title="Query Results")
-        figure = _figure_block(rows, title="Auto Figure")
+        table = _table_block(rows, title="Kết quả truy vấn")
+        figure = _figure_block(rows, title="Biểu đồ tự động")
         if table:
             blocks.append(table)
         if figure:
@@ -403,7 +403,7 @@ def run_chat(payload: ChatRequest) -> dict[str, Any]:
 
         return {
             "mode": "sql",
-            "assistant_message": f"SQL executed successfully. Returned {len(rows)} rows.",
+            "assistant_message": f"Đã chạy SQL thành công. Trả về {len(rows)} dòng.",
             "active_rules": rules,
             "blocks": blocks,
             "trace": _trace(
@@ -415,7 +415,7 @@ def run_chat(payload: ChatRequest) -> dict[str, Any]:
 
     if message_lower.startswith("/schema") or message_lower.startswith("schema:"):
         if not rules.allow_schema:
-            text = "Blocked by active rule: schema search is disabled (`allow_schema=off`)."
+            text = "Bị chặn bởi rule đang bật: tìm schema đã tắt (`allow_schema=off`)."
             return {
                 "mode": "schema",
                 "assistant_message": text,
@@ -438,15 +438,15 @@ def run_chat(payload: ChatRequest) -> dict[str, Any]:
         result = service.search_schema(keyword, schemas=DEFAULT_SCHEMAS)
         rows = result.get("matches", [])
         blocks: list[Block] = [
-            Block(type="text", payload={"text": f"Found {len(rows)} schema matches for '{keyword}'."})
+            Block(type="text", payload={"text": f"Tìm thấy {len(rows)} kết quả schema cho '{keyword}'."})
         ]
-        table = _table_block(rows, title="Schema Matches")
+        table = _table_block(rows, title="Kết quả schema")
         if table:
             blocks.append(table)
 
         return {
             "mode": "schema",
-            "assistant_message": f"Found {len(rows)} schema matches for '{keyword}'.",
+            "assistant_message": f"Tìm thấy {len(rows)} kết quả schema cho '{keyword}'.",
             "active_rules": rules,
             "blocks": blocks,
             "trace": _trace(intent="schema_search", selected_tools=["search_schema"]),
@@ -460,7 +460,7 @@ def run_chat(payload: ChatRequest) -> dict[str, Any]:
         or message_lower.startswith("define:")
     ):
         if not rules.allow_definition:
-            text = "Blocked by active rule: business definition is disabled (`allow_definition=off`)."
+            text = "Bị chặn bởi rule đang bật: business definition đã tắt (`allow_definition=off`)."
             return {
                 "mode": "definition",
                 "assistant_message": text,
@@ -488,7 +488,7 @@ def run_chat(payload: ChatRequest) -> dict[str, Any]:
             definition = result.get("definition", {})
             text = f"{definition.get('term')}: {definition.get('definition')}"
         else:
-            text = "Definition not found. Check available terms."
+            text = "Không tìm thấy định nghĩa (definition not found). Bạn thử thuật ngữ khác nhé."
 
         return {
             "mode": "definition",
@@ -500,7 +500,7 @@ def run_chat(payload: ChatRequest) -> dict[str, Any]:
 
     if message_lower.startswith("/kpi") or message_lower.startswith("kpi:"):
         if not rules.allow_kpi:
-            text = "Blocked by active rule: KPI summary is disabled (`allow_kpi=off`)."
+            text = "Bị chặn bởi rule đang bật: KPI summary đã tắt (`allow_kpi=off`)."
             return {
                 "mode": "kpi",
                 "assistant_message": text,
@@ -514,18 +514,18 @@ def run_chat(payload: ChatRequest) -> dict[str, Any]:
         overview = result.get("overview", {})
         series = result.get("series", [])
         text = (
-            "KPI summary loaded: "
+            "Đã tải KPI: "
             f"orders={overview.get('total_orders')}, gmv={overview.get('gmv')}, "
             f"delivered_rate={overview.get('delivered_order_rate')}"
         )
 
         blocks: list[Block] = [Block(type="text", payload={"text": text})]
         if overview:
-            ov_table = _table_block([overview], title="KPI Overview")
+            ov_table = _table_block([overview], title="Tổng quan KPI")
             if ov_table:
                 blocks.append(ov_table)
-        series_table = _table_block(series, title="KPI Series")
-        series_figure = _figure_block(series, title="KPI Trend")
+        series_table = _table_block(series, title="Chuỗi KPI")
+        series_figure = _figure_block(series, title="Xu hướng KPI")
         if series_table:
             blocks.append(series_table)
         if series_figure:
@@ -549,7 +549,7 @@ def run_chat(payload: ChatRequest) -> dict[str, Any]:
                 inferred_intent=inferred_intent,
                 mode="chitchat",
             )
-        text = "Agent mode is disabled by rule. Use /rule agent on to re-enable natural chat."
+        text = "Agent mode đang tắt theo rule. Dùng /rule agent on để bật lại chat tự nhiên."
         return {
             "mode": "chitchat",
             "assistant_message": text,
@@ -577,7 +577,7 @@ def run_chat(payload: ChatRequest) -> dict[str, Any]:
         }
 
     if not rules.allow_agent:
-        text = "Blocked by active rule: natural-language agent workflow is disabled (`allow_agent=off`)."
+        text = "Bị chặn bởi rule đang bật: luồng agent tự nhiên đã tắt (`allow_agent=off`)."
         return {
             "mode": "agent",
             "assistant_message": text,
@@ -587,19 +587,19 @@ def run_chat(payload: ChatRequest) -> dict[str, Any]:
         }
 
     blocked_by_intent = {
-        "sql_query": (not rules.allow_sql, "Natural-language SQL intent is disabled (`allow_sql=off`)."),
-        "schema_search": (not rules.allow_schema, "Schema intent is disabled (`allow_schema=off`)."),
+        "sql_query": (not rules.allow_sql, "Intent SQL tự nhiên đã tắt (`allow_sql=off`)."),
+        "schema_search": (not rules.allow_schema, "Intent schema đã tắt (`allow_schema=off`)."),
         "business_definition": (
             not rules.allow_definition,
-            "Business definition intent is disabled (`allow_definition=off`).",
+            "Intent business definition đã tắt (`allow_definition=off`).",
         ),
-        "kpi_summary": (not rules.allow_kpi, "KPI intent is disabled (`allow_kpi=off`)."),
+        "kpi_summary": (not rules.allow_kpi, "Intent KPI đã tắt (`allow_kpi=off`)."),
     }
     is_blocked, reason = blocked_by_intent.get(inferred_intent, (False, ""))
     if is_blocked:
         return {
             "mode": "agent",
-            "assistant_message": f"Blocked by active rule: {reason}",
+            "assistant_message": f"Bị chặn bởi rule đang bật: {reason}",
             "active_rules": rules,
             "blocks": [Block(type="warnings", payload={"warnings": [reason]})],
             "trace": _trace(intent=inferred_intent, blocked=True, warnings=[reason]),
