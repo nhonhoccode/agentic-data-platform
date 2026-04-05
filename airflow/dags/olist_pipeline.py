@@ -32,16 +32,20 @@ with DAG(
     dbt_run = BashOperator(
         task_id="dbt_run",
         bash_command=(
+            "mkdir -p /tmp/dbt_logs /tmp/dbt_target && "
             f"cd {PROJECT_DIR}/dbt && "
-            "dbt deps --profiles-dir . && "
-            "dbt run --profiles-dir ."
+            "dbt run --profiles-dir . --log-path /tmp/dbt_logs --target-path /tmp/dbt_target"
         ),
         execution_timeout=timedelta(minutes=30),
     )
 
     dbt_test = BashOperator(
         task_id="dbt_test",
-        bash_command=f"cd {PROJECT_DIR}/dbt && dbt test --profiles-dir .",
+        bash_command=(
+            "mkdir -p /tmp/dbt_logs /tmp/dbt_target && "
+            f"cd {PROJECT_DIR}/dbt && "
+            "dbt test --profiles-dir . --log-path /tmp/dbt_logs --target-path /tmp/dbt_target"
+        ),
         execution_timeout=timedelta(minutes=20),
     )
 

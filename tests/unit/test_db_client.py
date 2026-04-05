@@ -123,7 +123,8 @@ def test_run_read_query_validates_and_bounds(monkeypatch) -> None:
     assert fake_pool.open_calls == [True]
 
     executed = fake_conn.cursor_obj.executed
-    assert executed[0][0] == "SET statement_timeout = %s"
+    assert executed[0][0] == "SELECT set_config('statement_timeout', %s, false)"
+    assert executed[0][1] == ("120000",)
     assert executed[1][0] == "SELECT 1 LIMIT 5"
 
 
@@ -139,6 +140,7 @@ def test_run_system_query_executes_with_timeout(monkeypatch) -> None:
 
     assert rows == [{"ok": 1}]
     executed = fake_conn.cursor_obj.executed
-    assert executed[0][0] == "SET statement_timeout = %s"
+    assert executed[0][0] == "SELECT set_config('statement_timeout', %s, false)"
+    assert executed[0][1] == ("120000",)
     assert executed[1][0] == "SELECT 1"
     assert executed[1][1] == {"a": 1}

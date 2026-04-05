@@ -59,7 +59,10 @@ class DatabaseClient:
 
         with self.connect() as conn:
             with conn.cursor() as cur:
-                cur.execute("SET statement_timeout = %s", (self.settings.db_statement_timeout_ms,))
+                cur.execute(
+                    "SELECT set_config('statement_timeout', %s, false)",
+                    (str(self.settings.db_statement_timeout_ms),),
+                )
                 cur.execute(bounded_sql, params)
                 rows = cur.fetchall()
                 return bounded_sql, rows
@@ -72,6 +75,9 @@ class DatabaseClient:
         """Used by trusted internal services for metadata and KPI lookups."""
         with self.connect() as conn:
             with conn.cursor() as cur:
-                cur.execute("SET statement_timeout = %s", (self.settings.db_statement_timeout_ms,))
+                cur.execute(
+                    "SELECT set_config('statement_timeout', %s, false)",
+                    (str(self.settings.db_statement_timeout_ms),),
+                )
                 cur.execute(sql_text, params)
                 return cur.fetchall()
