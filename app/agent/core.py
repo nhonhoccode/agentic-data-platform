@@ -99,11 +99,11 @@ def _fallback_summarize(result: dict[str, Any], intent: str) -> str:
     if intent == "help_request":
         return (
             "I can help with KPI summary, schema search, business definitions, "
-            "and read-only SQL analytics. Try /help in UI for examples."
+            "and read-only SQL analytics. Ask naturally or use /help for commands."
         )
     if intent == "chitchat":
         return (
-            "Hi. Ask naturally about KPI, revenue trends, schema, or business terms, "
+            "I am online. Ask naturally about KPI, revenue trends, schema, or business terms, "
             "and I will route to the right tool."
         )
     if intent == "schema_search":
@@ -201,17 +201,35 @@ def _build_summarization_llm() -> Any | None:
 
 def _maybe_llm_summarize(state: AgentState) -> str | None:
     try:
-        if state.get("intent") in {"help_request", "chitchat"}:
-            return None
-
         llm = _build_summarization_llm()
         if llm is None:
             return None
 
-        prompt = (
-            "You are an analytics assistant. Summarize the result in <=4 sentences. "
-            f"Intent={state['intent']}. Result={json.dumps(state.get('raw_result', {}), default=str)[:5000]}"
-        )
+        intent = state.get("intent", "")
+        question = state.get("question", "")
+        result_payload = json.dumps(state.get("raw_result", {}), default=str)[:5000]
+
+        if intent == "help_request":
+            prompt = (
+                "You are an analytics assistant for an e-commerce data platform. "
+                "Respond in the same language as the user's message. "
+                "Give a concise and natural answer describing what you can do, then provide 3 practical examples. "
+                f"User message: {question}"
+            )
+        elif intent == "chitchat":
+            prompt = (
+                "You are an analytics assistant for an e-commerce data platform. "
+                "Respond in the same language as the user's message in 2-4 natural sentences. "
+                "Be friendly, mention your analytics capabilities briefly, and suggest one next question. "
+                f"User message: {question}"
+            )
+        else:
+            prompt = (
+                "You are an analytics assistant. Summarize the result in <=4 sentences. "
+                "Respond in the same language as the user's message. "
+                f"User message: {question}. Intent={intent}. Result={result_payload}"
+            )
+
         response = llm.invoke(prompt)
         content = getattr(response, "content", "")
         return str(content) if content else None

@@ -265,13 +265,74 @@ def _trace(
     )
 
 
+def _agent_response_from_workflow(
+    *,
+    result: dict[str, Any],
+    rules: RuleConfig,
+    inferred_intent: str,
+    mode: str = "agent",
+) -> dict[str, Any]:
+    raw_result = result.get("raw_result") or {}
+    rows: list[dict[str, Any]] = []
+    if isinstance(raw_result, dict):
+        if isinstance(raw_result.get("data"), list):
+            rows = raw_result.get("data", [])
+        elif isinstance(raw_result.get("matches"), list):
+            rows = raw_result.get("matches", [])
+        elif isinstance(raw_result.get("series"), list):
+            rows = raw_result.get("series", [])
+
+    blocks: list[Block] = [
+        Block(type="text", payload={"text": result.get("result_summary", "Workflow completed.")})
+    ]
+    table = _table_block(rows, title="Agent Results")
+    figure = _figure_block(rows, title="Auto Figure")
+    if table:
+        blocks.append(table)
+    if figure:
+        blocks.append(figure)
+    if result.get("warnings"):
+        blocks.append(Block(type="warnings", payload={"warnings": result.get("warnings", [])}))
+
+    return {
+        "mode": mode,
+        "assistant_message": result.get("result_summary", "Workflow completed."),
+        "active_rules": rules,
+        "blocks": blocks,
+        "trace": _trace(
+            intent=inferred_intent,
+            selected_tools=result.get("selected_tools", []),
+            sql=result.get("sql"),
+            confidence=result.get("confidence"),
+            warnings=result.get("warnings", []),
+        ),
+    }
+
+
 def run_chat(payload: ChatRequest) -> dict[str, Any]:
     message = payload.message.strip()
     rules = payload.rules
     message_lower = message.lower()
     context = _merge_context(payload.context)
 
+    if message_lower in {"/help", "help"}:
+        return {
+            "mode": "help",
+            "assistant_message": _help_text(rules),
+            "active_rules": rules,
+            "blocks": [Block(type="text", payload={"text": _help_text(rules)})],
+            "trace": _trace(intent="help_request"),
+        }
+
     if _is_help_request(message_lower):
+        if rules.allow_agent:
+            workflow_result = run_workflow(message, context)
+            return _agent_response_from_workflow(
+                result=workflow_result,
+                rules=rules,
+                inferred_intent="help_request",
+                mode="help",
+            )
         return {
             "mode": "help",
             "assistant_message": _help_text(rules),
@@ -480,19 +541,32 @@ def run_chat(payload: ChatRequest) -> dict[str, Any]:
 
     inferred_intent = classify_intent(message)
     if inferred_intent == "chitchat":
-        text = (
-            "Mình đang online. Bạn có thể hỏi tự nhiên về KPI/query/dashboard/schema/definition, "
-            "hoặc dùng /help để xem command."
-        )
+        if rules.allow_agent:
+            workflow_result = run_workflow(message, context)
+            return _agent_response_from_workflow(
+                result=workflow_result,
+                rules=rules,
+                inferred_intent=inferred_intent,
+                mode="chitchat",
+            )
+        text = "Agent mode is disabled by rule. Use /rule agent on to re-enable natural chat."
         return {
             "mode": "chitchat",
             "assistant_message": text,
             "active_rules": rules,
-            "blocks": [Block(type="text", payload={"text": text})],
-            "trace": _trace(intent=inferred_intent),
+            "blocks": [Block(type="warnings", payload={"warnings": [text]})],
+            "trace": _trace(intent=inferred_intent, blocked=True, warnings=[text]),
         }
 
     if inferred_intent == "help_request":
+        if rules.allow_agent:
+            workflow_result = run_workflow(message, context)
+            return _agent_response_from_workflow(
+                result=workflow_result,
+                rules=rules,
+                inferred_intent=inferred_intent,
+                mode="help",
+            )
         text = _help_text(rules)
         return {
             "mode": "help",
@@ -532,41 +606,12 @@ def run_chat(payload: ChatRequest) -> dict[str, Any]:
         }
 
     result = run_workflow(message, context)
-    raw_result = result.get("raw_result") or {}
-    rows = []
-    if isinstance(raw_result, dict):
-        if isinstance(raw_result.get("data"), list):
-            rows = raw_result.get("data", [])
-        elif isinstance(raw_result.get("matches"), list):
-            rows = raw_result.get("matches", [])
-        elif isinstance(raw_result.get("series"), list):
-            rows = raw_result.get("series", [])
-
-    blocks: list[Block] = [
-        Block(type="text", payload={"text": result.get("result_summary", "Workflow completed.")})
-    ]
-    table = _table_block(rows, title="Agent Results")
-    figure = _figure_block(rows, title="Auto Figure")
-    if table:
-        blocks.append(table)
-    if figure:
-        blocks.append(figure)
-    if result.get("warnings"):
-        blocks.append(Block(type="warnings", payload={"warnings": result.get("warnings", [])}))
-
-    return {
-        "mode": "agent",
-        "assistant_message": result.get("result_summary", "Workflow completed."),
-        "active_rules": rules,
-        "blocks": blocks,
-        "trace": _trace(
-            intent=inferred_intent,
-            selected_tools=result.get("selected_tools", []),
-            sql=result.get("sql"),
-            confidence=result.get("confidence"),
-            warnings=result.get("warnings", []),
-        ),
-    }
+    return _agent_response_from_workflow(
+        result=result,
+        rules=rules,
+        inferred_intent=inferred_intent,
+        mode="agent",
+    )
 
 
 def run_query(sql_text: str, limit: int) -> dict[str, Any]:
