@@ -61,4 +61,11 @@ with DAG(
         execution_timeout=timedelta(minutes=5),
     )
 
-    ingest_raw >> dbt_run >> dbt_test >> provision_readonly >> validate_serving
+    rag_index = BashOperator(
+        task_id="rag_index",
+        bash_command=f"cd {PROJECT_DIR} && python -m app.rag.indexer",
+        execution_timeout=timedelta(minutes=15),
+        trigger_rule="all_success",
+    )
+
+    ingest_raw >> dbt_run >> dbt_test >> provision_readonly >> validate_serving >> rag_index
