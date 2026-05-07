@@ -69,6 +69,53 @@ def extract_business_term(question: str) -> str:
 
 SQL_TEMPLATES = [
     (
+        ["100 đơn hàng gần nhất", "100 don hang gan nhat", "đơn hàng gần nhất", "don hang gan nhat", "recent orders", "latest orders"],
+        """
+        SELECT
+            order_id,
+            customer_id,
+            order_status,
+            order_purchase_ts,
+            payment_total
+        FROM marts.fct_orders
+        ORDER BY order_purchase_ts DESC
+        LIMIT 100
+        """,
+    ),
+    (
+        ["doanh thu theo danh mục", "doanh thu theo danh muc", "danh mục sản phẩm", "danh muc san pham", "revenue by category", "category revenue"],
+        """
+        SELECT
+            category_name_en,
+            total_orders,
+            total_revenue,
+            avg_item_value
+        FROM serving.fct_sales_by_category
+        ORDER BY total_revenue DESC
+        LIMIT 20
+        """,
+    ),
+    (
+        ["quý vừa qua", "quy vua qua", "quý này", "quy nay", "tháng gần nhất", "thang gan nhat", "last quarter", "this quarter"],
+        """
+        WITH latest AS (
+            SELECT MAX(month) AS max_month
+            FROM serving.kpi_monthly_sales
+        )
+        SELECT
+            m.month,
+            m.total_orders,
+            m.delivered_orders,
+            m.gmv,
+            m.avg_order_value
+        FROM serving.kpi_monthly_sales m
+        CROSS JOIN latest l
+        WHERE m.month >= (l.max_month - INTERVAL '2 months')
+          AND m.month <= l.max_month
+        ORDER BY m.month
+        """,
+    ),
+    (
         ["top categories", "top category", "category revenue"],
         """
         SELECT category_name_en, total_orders, total_revenue, avg_item_value

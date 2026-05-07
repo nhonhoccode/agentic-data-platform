@@ -3,9 +3,43 @@ from __future__ import annotations
 import re
 
 SCHEMA_KEYWORDS = {"schema", "column", "table", "field", "metadata"}
-DEFINITION_KEYWORDS = {"definition", "define", "meaning", "what is"}
-KPI_KEYWORDS = {"kpi", "gmv", "aov", "revenue", "summary", "trend", "monthly"}
-SQL_KEYWORDS = {"sql", "query", "select", "from", "where", "group by", "order by", "limit", "join"}
+DEFINITION_KEYWORDS = {"definition", "define", "meaning", "what is", "dinh nghia", "định nghĩa"}
+KPI_KEYWORDS = {
+    "kpi",
+    "gmv",
+    "aov",
+    "revenue",
+    "summary",
+    "trend",
+    "monthly",
+    "doanh thu",
+    "xu huong",
+    "xu hướng",
+    "thang",
+    "tháng",
+    "quy",
+    "quý",
+}
+SQL_KEYWORDS = {
+    "sql",
+    "query",
+    "select",
+    "from",
+    "where",
+    "group by",
+    "order by",
+    "limit",
+    "join",
+    "truy van",
+    "truy vấn",
+    "danh sach",
+    "danh sách",
+    "đơn hàng",
+    "don hang",
+    "sản phẩm",
+    "san pham",
+    "doanh thu",
+}
 HELP_KEYWORDS = {"help", "what can you do", "làm được gì", "ban lam duoc gi", "capabilities", "commands"}
 SMALLTALK_KEYWORDS = {
     "hi",
@@ -17,6 +51,32 @@ SMALLTALK_KEYWORDS = {
     "good evening",
     "thanks",
     "thank you",
+}
+ANALYTICS_HINTS = {
+    "order",
+    "orders",
+    "revenue",
+    "sales",
+    "gmv",
+    "aov",
+    "kpi",
+    "truy van",
+    "truy vấn",
+    "don hang",
+    "đơn hàng",
+    "san pham",
+    "sản phẩm",
+    "doanh thu",
+    "danh muc",
+    "danh mục",
+    "bao cao",
+    "báo cáo",
+    "thang",
+    "tháng",
+    "quy",
+    "quý",
+    "gan nhat",
+    "gần nhất",
 }
 
 
@@ -60,6 +120,34 @@ def classify_intent(question: str) -> str:
     if any(keyword in q for keyword in HELP_KEYWORDS):
         return "help_request"
 
+    if any(keyword in q for keyword in ANALYTICS_HINTS):
+        if any(keyword in q for keyword in {"schema", "column", "table", "metadata", "cột", "bảng"}):
+            return "schema_search"
+        if any(
+            keyword in q
+            for keyword in {
+                "definition",
+                "define",
+                "dinh nghia",
+                "định nghĩa",
+                "meaning",
+                "la gi",
+                "là gì",
+                "nghia la",
+                "nghĩa là",
+                "viet tat",
+                "viết tắt",
+                "what is",
+                "what does",
+            }
+        ):
+            return "business_definition"
+        if any(keyword in q for keyword in {"danh muc", "danh mục", "category", "categories"}):
+            return "sql_query"
+        if any(keyword in q for keyword in {"kpi", "doanh thu", "gmv", "aov", "trend", "xu huong", "xu hướng"}):
+            return "kpi_summary"
+        return "sql_query"
+
     scores = {
         "schema_search": _keyword_score(q, SCHEMA_KEYWORDS),
         "business_definition": _keyword_score(q, DEFINITION_KEYWORDS),
@@ -75,7 +163,7 @@ def classify_intent(question: str) -> str:
     if any(keyword in q for keyword in SMALLTALK_KEYWORDS):
         return "chitchat"
 
-    # Non-analytical short messages are treated as small talk by default.
+    # Short ambiguous text defaults to small talk.
     if len(q.split()) <= 4:
         return "chitchat"
 

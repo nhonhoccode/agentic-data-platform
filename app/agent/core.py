@@ -1,14 +1,22 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
+import threading
+from collections.abc import AsyncIterator
 from typing import Any
 
-from langgraph.graph import END, START, StateGraph
+from app.config import get_settings
+from app.observability import configure_langsmith
 
-from app.agent.models import AgentState
-from app.agent.router import classify_intent, route_for_intent
-from app.agent.tools import (
+configure_langsmith()
+
+from langgraph.graph import END, START, StateGraph  # noqa: E402
+
+from app.agent.models import AgentState  # noqa: E402
+from app.agent.router import classify_intent, route_for_intent  # noqa: E402
+from app.agent.tools import (  # noqa: E402
     business_definition_tool,
     extract_business_term,
     extract_schema_keyword,
@@ -16,60 +24,178 @@ from app.agent.tools import (
     query_data_tool,
     search_schema_tool,
 )
-from app.config import get_settings
+
+
+_INTENT_PIPELINE = {
+    "sql_query": ["sql_agent", "viz_agent"],
+    "kpi_summary": ["insight_agent", "viz_agent", "time_series_agent", "analytic_agent"],
+    "schema_search": ["retrieval_agent"],
+    "business_definition": ["retrieval_agent"],
+    "help_request": ["chat_agent"],
+    "chitchat": ["chat_agent"],
+}
 
 
 def _classify_node(state: AgentState) -> AgentState:
     intent = classify_intent(state["question"])
-    route = route_for_intent(intent)
-
+    pipeline = list(_INTENT_PIPELINE.get(intent, ["chat_agent"]))
     return {
         **state,
         "intent": intent,
-        "route": route,
+        "route": route_for_intent(intent),
+        "pending_agents": pipeline,
+        "completed_agents": [],
+        "iteration": 0,
         "warnings": state.get("warnings", []),
         "selected_tools": [],
         "sql": None,
     }
 
 
-def _route_selector(state: AgentState) -> str:
-    return state["route"]
+def _manager_node(state: AgentState) -> AgentState:
+    return {**state, "iteration": state.get("iteration", 0) + 1}
+
+
+def _manager_router(state: AgentState) -> str:
+    pending = state.get("pending_agents") or []
+    if state.get("iteration", 0) > 6:
+        return "synthesize"
+    if not pending:
+        return "synthesize"
+    return pending[0]
+
+
+def _consume_agent(state: AgentState, name: str) -> dict[str, Any]:
+    pending = list(state.get("pending_agents") or [])
+    if pending and pending[0] == name:
+        pending = pending[1:]
+    completed = [*state.get("completed_agents", []), name]
+    return {"pending_agents": pending, "completed_agents": completed}
 
 
 def _sql_node(state: AgentState) -> AgentState:
+    consume = _consume_agent(state, "sql_agent")
+    try:
+        from app.agent.sql.graph import run_sql_graph
+
+        sub = run_sql_graph(state["question"])
+        if sub.get("raw_result") and not sub.get("error"):
+            confidence = 0.9 if sub.get("attempts", 0) == 0 else 0.75
+            return {
+                **state,
+                **consume,
+                "selected_tools": [*state.get("selected_tools", []), *sub.get("selected_tools", [])],
+                "sql": sub.get("sql"),
+                "raw_result": sub.get("raw_result", {}),
+                "confidence": confidence,
+                "warnings": (
+                    [*state.get("warnings", []), f"sql_self_correction_attempts={sub['attempts']}"]
+                    if sub.get("attempts", 0) > 0
+                    else state.get("warnings", [])
+                ),
+            }
+
+        warnings = list(state.get("warnings", []))
+        if sub.get("error"):
+            warnings.append(f"sql_subgraph_failed: {sub['error']}")
+    except Exception as exc:  # noqa: BLE001
+        warnings = [*state.get("warnings", []), f"sql_subgraph_unavailable: {exc}"]
+
     result = query_data_tool(state["question"], limit=200)
     return {
         **state,
-        "selected_tools": ["query_data"],
+        **consume,
+        "selected_tools": [*state.get("selected_tools", []), "query_data"],
         "sql": result["executed_sql"],
         "raw_result": result,
         "confidence": 0.82,
+        "warnings": warnings,
     }
 
 
 def _retrieval_node(state: AgentState) -> AgentState:
+    consume = _consume_agent(state, "retrieval_agent")
+    selected = list(state.get("selected_tools", []))
+
     if state["intent"] == "schema_search":
+        # Try RAG (Qdrant) first, fall back to live information_schema search.
+        try:
+            from app.rag.retrieval import retrieve_tables
+
+            hits = retrieve_tables(state["question"], limit=5)
+        except Exception:  # noqa: BLE001
+            hits = []
+        if hits:
+            matches = [
+                {
+                    "table_schema": h["payload"].get("schema"),
+                    "table_name": h["payload"].get("table"),
+                    "columns": ", ".join(h["payload"].get("columns", [])[:8]),
+                    "score": round(h.get("score", 0.0), 3),
+                }
+                for h in hits
+            ]
+            return {
+                **state,
+                **consume,
+                "selected_tools": [*selected, "rag_schema_search"],
+                "raw_result": {"matches": matches, "match_count": len(matches), "source": "rag"},
+                "confidence": 0.88,
+            }
+
         keyword = extract_schema_keyword(state["question"])
         result = search_schema_tool(keyword)
         return {
             **state,
-            "selected_tools": ["search_schema"],
+            **consume,
+            "selected_tools": [*selected, "search_schema"],
             "raw_result": result,
             "confidence": 0.85,
         }
 
     term = extract_business_term(state["question"])
     result = business_definition_tool(term)
+
+    # If exact glossary lookup fails, try RAG glossary as backup.
+    if not result.get("found"):
+        try:
+            from app.rag.retrieval import retrieve_glossary
+
+            hits = retrieve_glossary(state["question"], limit=2)
+        except Exception:  # noqa: BLE001
+            hits = []
+        if hits and hits[0].get("score", 0.0) >= 0.5:
+            top = hits[0]["payload"]
+            result = {
+                "found": True,
+                "definition": {
+                    "term": top.get("term"),
+                    "definition": top.get("definition"),
+                    "formula": top.get("formula"),
+                    "source_table": top.get("source_table"),
+                },
+                "source": "rag",
+                "score": hits[0]["score"],
+            }
+            return {
+                **state,
+                **consume,
+                "selected_tools": [*selected, "rag_glossary"],
+                "raw_result": result,
+                "confidence": 0.85,
+            }
+
     return {
         **state,
-        "selected_tools": ["get_business_definition"],
+        **consume,
+        "selected_tools": [*selected, "get_business_definition"],
         "raw_result": result,
         "confidence": 0.9 if result.get("found") else 0.5,
     }
 
 
 def _insight_node(state: AgentState) -> AgentState:
+    consume = _consume_agent(state, "insight_agent")
     context = state.get("context", {})
     result = kpi_summary_tool(
         start_date=context.get("start_date"),
@@ -77,20 +203,111 @@ def _insight_node(state: AgentState) -> AgentState:
     )
     return {
         **state,
-        "selected_tools": ["get_kpi_summary"],
+        **consume,
+        "selected_tools": [*state.get("selected_tools", []), "get_kpi_summary"],
         "raw_result": result,
         "confidence": 0.88,
     }
 
 
-def _chat_node(state: AgentState) -> AgentState:
+def _extract_rows(raw: dict[str, Any]) -> list[dict[str, Any]]:
+    if not isinstance(raw, dict):
+        return []
+    for key in ("data", "series", "matches"):
+        v = raw.get(key)
+        if isinstance(v, list):
+            return v
+    return []
+
+
+def _viz_node(state: AgentState) -> AgentState:
+    from app.agent.viz_graph import run_viz_graph
+
+    consume = _consume_agent(state, "viz_agent")
+    rows = _extract_rows(state.get("raw_result") or {})
+
+    if not rows:
+        return {**state, **consume, "chart": None}
+
+    sub = run_viz_graph(rows, state.get("question", ""))
+    chart = sub.get("chart")
+    selected = list(state.get("selected_tools", []))
+    selected.extend(sub.get("selected_tools", []))
+
+    warnings = list(state.get("warnings", []))
+    if sub.get("attempts", 0) > 0:
+        warnings.append(f"viz_self_correction_attempts={sub['attempts']}")
+
     return {
         **state,
-        "selected_tools": [],
-        "raw_result": {
-            "message_type": "chat",
-            "question": state["question"],
-        },
+        **consume,
+        "chart": chart,
+        "selected_tools": selected,
+        "warnings": warnings,
+    }
+
+
+def _analytic_node(state: AgentState) -> AgentState:
+    from app.agent.analytic_graph import run_analytic_graph
+
+    consume = _consume_agent(state, "analytic_agent")
+    raw = state.get("raw_result") or {}
+    rows: list[dict[str, Any]] = []
+    if isinstance(raw, dict):
+        if isinstance(raw.get("series"), list):
+            rows = raw["series"]
+        elif isinstance(raw.get("data"), list):
+            rows = raw["data"]
+
+    sub = run_analytic_graph(rows, state.get("question", ""))
+    branch = sub.get("branch", "other")
+    branch_analytics = sub.get("analytics", {}) or {}
+
+    # Merge with existing analytics so multiple agents (time_series + analytic) compose.
+    merged = dict(state.get("analytics") or {})
+    merged.update(branch_analytics)
+
+    return {
+        **state,
+        **consume,
+        "analytics": merged,
+        "selected_tools": [
+            *state.get("selected_tools", []),
+            f"analytic_{branch}",
+        ],
+    }
+
+
+def _time_series_node(state: AgentState) -> AgentState:
+    from app.agent.analytic import time_series_summary
+
+    consume = _consume_agent(state, "time_series_agent")
+    raw = state.get("raw_result") or {}
+    rows: list[dict[str, Any]] = []
+    if isinstance(raw, dict):
+        if isinstance(raw.get("series"), list):
+            rows = raw["series"]
+        elif isinstance(raw.get("data"), list):
+            rows = raw["data"]
+
+    summary = time_series_summary(rows)
+    merged = dict(state.get("analytics") or {})
+    merged["time_series"] = summary
+
+    return {
+        **state,
+        **consume,
+        "analytics": merged,
+        "selected_tools": [*state.get("selected_tools", []), "time_series"],
+    }
+
+
+def _chat_node(state: AgentState) -> AgentState:
+    consume = _consume_agent(state, "chat_agent")
+    return {
+        **state,
+        **consume,
+        "raw_result": {"message_type": "chat", "question": state["question"]},
         "confidence": 0.7,
     }
 
@@ -126,84 +343,36 @@ def _fallback_summarize(result: dict[str, Any], intent: str) -> str:
 
 
 def _build_summarization_llm() -> Any | None:
-    settings = get_settings()
-    provider = settings.llm_provider.strip().lower()
+    from app.agent.llm import get_chat_llm
 
-    if provider in {"", "none", "off", "disabled"}:
-        return None
+    return get_chat_llm()
 
-    if provider == "gemini":
-        if not settings.gemini_api_key:
-            return None
 
-        from langchain_google_genai import ChatGoogleGenerativeAI
-
-        return ChatGoogleGenerativeAI(
-            model=settings.model_api_base or "gemini-2.0-flash",
-            google_api_key=settings.gemini_api_key,
-            temperature=settings.temperature,
-        )
-
-    if provider == "deepseek":
-        if not settings.deepseek_api_key:
-            return None
-
-        from langchain_openai import ChatOpenAI
-
-        return ChatOpenAI(
-            model=settings.model_api_base or "deepseek-chat",
-            api_key=settings.deepseek_api_key,
-            base_url=settings.base_url or "https://api.deepseek.com/v1",
-            temperature=settings.temperature,
-        )
-
-    if provider in {"self_host", "openai_compatible"}:
-        if not (settings.openai_api_key and settings.base_url and settings.model_api_base):
-            return None
-
-        from langchain_openai import ChatOpenAI
-
-        kwargs: dict[str, Any] = {
-            "model": settings.model_api_base,
-            "api_key": settings.openai_api_key,
-            "base_url": settings.base_url,
-            "temperature": settings.temperature,
-        }
-        if not settings.llm_enable_thinking:
-            kwargs["extra_body"] = {
-                "chat_template_kwargs": {
-                    "enable_thinking": False,
-                }
-            }
-
-        return ChatOpenAI(**kwargs)
-
-    if provider == "openai":
-        if not settings.openai_api_key:
-            return None
-
-        from langchain_openai import ChatOpenAI
-
-        kwargs: dict[str, Any] = {
-            "model": settings.openai_model or "gpt-4o-mini",
-            "api_key": settings.openai_api_key,
-            "temperature": settings.temperature,
-        }
-        if settings.base_url:
-            kwargs["base_url"] = settings.base_url
-        return ChatOpenAI(**kwargs)
-
-    return None
+def _format_history_for_prompt(history: list[dict[str, Any]]) -> str:
+    if not history:
+        return ""
+    turns = []
+    for h in history[-6:]:
+        role = h.get("role", "")
+        content = (h.get("content", "") or "").strip()
+        if role and content:
+            turns.append(f"{role.upper()}: {content[:300]}")
+    if not turns:
+        return ""
+    return "\n--- Bối cảnh hội thoại trước ---\n" + "\n".join(turns) + "\n---"
 
 
 def _maybe_llm_summarize(state: AgentState) -> str | None:
     try:
+        import concurrent.futures
+
         llm = _build_summarization_llm()
         if llm is None:
             return None
 
         intent = state.get("intent", "")
         question = state.get("question", "")
+        history_str = _format_history_for_prompt(state.get("history", []))
         result_payload = json.dumps(state.get("raw_result", {}), default=str)[:5000]
 
         if intent == "help_request":
@@ -211,23 +380,34 @@ def _maybe_llm_summarize(state: AgentState) -> str | None:
                 "Bạn là trợ lý phân tích dữ liệu thương mại điện tử. "
                 "Luôn trả lời bằng tiếng Việt tự nhiên, ngắn gọn, dễ hiểu. "
                 "Hãy mô tả bot làm được gì và đưa ra 3 ví dụ thực tế. "
+                "Không hỏi ngược người dùng để chọn lựa. "
+                f"{history_str}"
                 f"Câu hỏi người dùng: {question}"
             )
         elif intent == "chitchat":
             prompt = (
                 "Bạn là trợ lý phân tích dữ liệu thương mại điện tử. "
                 "Luôn trả lời bằng tiếng Việt trong 2-4 câu tự nhiên. "
-                "Giọng điệu thân thiện, nêu ngắn gọn khả năng của bạn và gợi ý 1 câu hỏi tiếp theo. "
+                "Giọng điệu thân thiện, nêu ngắn gọn khả năng của bạn. "
+                "Không hỏi ngược người dùng hoặc ép người dùng chọn lựa. "
+                f"{history_str}"
                 f"Câu hỏi người dùng: {question}"
             )
         else:
             prompt = (
                 "Bạn là trợ lý phân tích dữ liệu. "
                 "Luôn trả lời bằng tiếng Việt, tóm tắt kết quả trong tối đa 4 câu. "
+                "Nếu đã có đủ dữ liệu thì trả kết quả trực tiếp, không hỏi lại. "
+                f"{history_str}"
                 f"Câu hỏi người dùng: {question}. Intent={intent}. Kết quả={result_payload}"
             )
 
-        response = llm.invoke(prompt)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(llm.invoke, prompt)
+            try:
+                response = future.result(timeout=20)
+            except concurrent.futures.TimeoutError:
+                return None
         content = getattr(response, "content", "")
         return str(content) if content else None
     except Exception:
@@ -248,27 +428,42 @@ def _synthesize_node(state: AgentState) -> AgentState:
 def build_graph() -> Any:
     graph = StateGraph(AgentState)
     graph.add_node("classify", _classify_node)
+    graph.add_node("manager", _manager_node)
     graph.add_node("sql_agent", _sql_node)
     graph.add_node("retrieval_agent", _retrieval_node)
     graph.add_node("insight_agent", _insight_node)
+    graph.add_node("viz_agent", _viz_node)
+    graph.add_node("analytic_agent", _analytic_node)
+    graph.add_node("time_series_agent", _time_series_node)
     graph.add_node("chat_agent", _chat_node)
     graph.add_node("synthesize", _synthesize_node)
 
     graph.add_edge(START, "classify")
+    graph.add_edge("classify", "manager")
     graph.add_conditional_edges(
-        "classify",
-        _route_selector,
+        "manager",
+        _manager_router,
         {
             "sql_agent": "sql_agent",
             "retrieval_agent": "retrieval_agent",
             "insight_agent": "insight_agent",
+            "viz_agent": "viz_agent",
+            "analytic_agent": "analytic_agent",
+            "time_series_agent": "time_series_agent",
             "chat_agent": "chat_agent",
+            "synthesize": "synthesize",
         },
     )
-    graph.add_edge("sql_agent", "synthesize")
-    graph.add_edge("retrieval_agent", "synthesize")
-    graph.add_edge("insight_agent", "synthesize")
-    graph.add_edge("chat_agent", "synthesize")
+    for agent in (
+        "sql_agent",
+        "retrieval_agent",
+        "insight_agent",
+        "viz_agent",
+        "analytic_agent",
+        "time_series_agent",
+        "chat_agent",
+    ):
+        graph.add_edge(agent, "manager")
     graph.add_edge("synthesize", END)
 
     return graph.compile()
@@ -277,11 +472,16 @@ def build_graph() -> Any:
 _WORKFLOW = build_graph()
 
 
-def run_workflow(question: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
+def run_workflow(
+    question: str,
+    context: dict[str, Any] | None = None,
+    history: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     initial_state: AgentState = {
         "question": question,
         "context": context or {},
         "warnings": [],
+        "history": list(history or []),
     }
     result = _WORKFLOW.invoke(initial_state)
 
@@ -293,6 +493,93 @@ def run_workflow(question: str, context: dict[str, Any] | None = None) -> dict[s
         "confidence": float(result.get("confidence", 0.5)),
         "warnings": result.get("warnings", []),
         "raw_result": result.get("raw_result", {}),
+        "chart": result.get("chart"),
+        "analytics": result.get("analytics"),
+        "completed_agents": result.get("completed_agents", []),
+    }
+
+
+_NODE_LABELS = {
+    "classify": "Đang phân loại câu hỏi",
+    "manager": "Manager đang điều phối",
+    "sql_agent": "SQL agent: tra cứu dữ liệu",
+    "retrieval_agent": "Retrieval agent: tra schema/định nghĩa",
+    "insight_agent": "Insight agent: tổng hợp KPI",
+    "viz_agent": "Viz agent: dựng biểu đồ",
+    "analytic_agent": "Analytic agent: phân tích",
+    "time_series_agent": "Time-series agent: trend",
+    "chat_agent": "Chat agent: chuẩn bị phản hồi",
+    "synthesize": "Đang tóm tắt kết quả",
+}
+
+
+_SENTINEL = object()
+
+
+async def stream_workflow(
+    question: str,
+    context: dict[str, Any] | None = None,
+    history: list[dict[str, Any]] | None = None,
+) -> AsyncIterator[dict[str, Any]]:
+    """Run sync LangGraph in a worker thread, stream events via asyncio.Queue.
+
+    Critical for SSE: sync sub-graphs (DB queries, LLM calls, fastembed) would
+    otherwise block the asyncio event loop and prevent SSE flush.
+    """
+    initial_state: AgentState = {
+        "question": question,
+        "context": context or {},
+        "warnings": [],
+        "history": list(history or []),
+    }
+    final_state: dict[str, Any] = {}
+    loop = asyncio.get_running_loop()
+    queue: asyncio.Queue = asyncio.Queue()
+
+    def producer() -> None:
+        try:
+            for event in _WORKFLOW.stream(initial_state, stream_mode="updates"):
+                for node_name, node_state in event.items():
+                    if not isinstance(node_state, dict):
+                        continue
+                    final_state.update(node_state)
+                    payload = {
+                        "type": "step",
+                        "node": node_name,
+                        "label": _NODE_LABELS.get(node_name, node_name),
+                        "intent": final_state.get("intent"),
+                        "selected_tools": list(final_state.get("selected_tools", [])),
+                    }
+                    asyncio.run_coroutine_threadsafe(queue.put(payload), loop).result()
+        except Exception as exc:  # noqa: BLE001
+            asyncio.run_coroutine_threadsafe(
+                queue.put({"type": "error", "detail": f"{type(exc).__name__}: {exc}"}),
+                loop,
+            ).result()
+        finally:
+            asyncio.run_coroutine_threadsafe(queue.put(_SENTINEL), loop).result()
+
+    worker = threading.Thread(target=producer, daemon=True)
+    worker.start()
+
+    while True:
+        item = await queue.get()
+        if item is _SENTINEL:
+            break
+        yield item
+
+    yield {
+        "type": "final",
+        "intent": final_state.get("intent", "unknown"),
+        "selected_tools": final_state.get("selected_tools", []),
+        "sql": final_state.get("sql"),
+        "result_summary": final_state.get("result_summary", "Chưa tạo được tóm tắt."),
+        "confidence": float(final_state.get("confidence", 0.5)),
+        "warnings": final_state.get("warnings", []),
+        "raw_result": final_state.get("raw_result", {}),
+        "chart": final_state.get("chart"),
+        "analytics": final_state.get("analytics"),
+        "completed_agents": final_state.get("completed_agents", []),
     }
 
 
