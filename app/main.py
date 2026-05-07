@@ -7,12 +7,15 @@ import uvicorn
 from fastapi import Depends, FastAPI, HTTPException
 from starlette.staticfiles import StaticFiles
 
-from app.api.deps import ensure_api_security_config, require_api_key
-from app.api.routes import router as api_router
-from app.api.v2.routes import router as api_v2_router
 from app.config import get_settings
-from app.db.client import DatabaseClient
-from app.ui.routes import router as ui_router
+from app.observability import configure_langsmith
+
+configure_langsmith()
+
+from app.api.deps import ensure_api_security_config, require_api_key  # noqa: E402
+from app.api.v2.routes import router as api_v2_router  # noqa: E402
+from app.db.client import DatabaseClient  # noqa: E402
+from app.ui.routes import router as ui_router  # noqa: E402
 
 settings = get_settings()
 STATIC_DIR = Path(__file__).resolve().parent / "ui" / "static"
@@ -51,7 +54,6 @@ def create_app() -> FastAPI:
         return {"status": "ok", "env": settings.app_env}
 
     app.include_router(ui_router)
-    app.include_router(api_router)
     app.include_router(api_v2_router)
     return app
 

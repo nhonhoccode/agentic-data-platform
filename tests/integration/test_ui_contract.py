@@ -11,10 +11,9 @@ client = TestClient(create_app())
 def test_ui_page_returns_html_marker() -> None:
     response = client.get("/ui")
     assert response.status_code == 200
-    assert "Olist Data Platform Demo UI" in response.text
-    assert "olist-ui-root" in response.text
-    assert "Command Center" in response.text
-    assert "Analytics Dashboard" in response.text
+    # React build serves index.html with id="root" and bundled assets
+    assert '<div id="root">' in response.text
+    assert 'lang="vi"' in response.text
 
 
 def test_ui_proxy_capabilities_contract() -> None:
@@ -135,23 +134,3 @@ def test_ui_proxy_query_unsafe_returns_400(monkeypatch) -> None:
     )
     assert response.status_code == 400
     assert "Only SELECT" in response.json()["detail"]
-
-
-def test_ui_legacy_proxy_sql_contract(monkeypatch) -> None:
-    monkeypatch.setattr(
-        ui_routes.service,
-        "query_data",
-        lambda sql, limit=500: {
-            "executed_sql": sql,
-            "row_count": 1,
-            "data": [{"x": 1}],
-            "warnings": [],
-        },
-    )
-
-    response = client.post(
-        "/ui/proxy/sql",
-        json={"sql": "SELECT * FROM serving.kpi_overview", "limit": 10},
-    )
-    assert response.status_code == 200
-    assert response.json()["row_count"] == 1
