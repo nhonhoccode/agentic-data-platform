@@ -10,7 +10,7 @@ def test_required_runtime_files_exist() -> None:
         project_root / "dbt/dbt_project.yml",
         project_root / "app/main.py",
         project_root / "app/api/v2/routes.py",
-        project_root / "app/ui/templates/index.html",
+        project_root / "frontend/src/main.tsx",
     ]
 
     for path in required_files:

@@ -20,3 +20,17 @@ dbt/.user.yml
 .DS_Store
 
 archive.zip
+
+# Frontend build & deps
+frontend/node_modules/
+frontend/dist/
+frontend/*.tsbuildinfo
+app/ui/static/dist/
+
+# Python venv
+.venv/
+venv/
+.claude
+
+# Local notes
+CLAUDE_CHANGES.md

@@ -15,10 +15,16 @@ class RuleConfig(BaseModel):
     sql_limit: int = Field(default=500, ge=1, le=5000)
 
 
+class HistoryTurn(BaseModel):
+    role: str
+    content: str
+
+
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1)
     context: dict[str, Any] = Field(default_factory=dict)
     rules: RuleConfig = Field(default_factory=RuleConfig)
+    history: list[HistoryTurn] = Field(default_factory=list)
 
 
 class TracePayload(BaseModel):

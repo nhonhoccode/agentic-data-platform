@@ -4,8 +4,33 @@ Runnable local MVP for e-commerce analytics with:
 - Postgres data platform (`raw -> staging -> marts -> serving`)
 - dbt transformations and tests
 - FastAPI query and agent endpoints
-- LangGraph-based multi-agent orchestration (hybrid local-first)
+- **LangGraph multi-agent (Manager-loop): SQL · Retrieval · Insight · Viz · Analytic · Chat**
+- **RAG over schema + business glossary via Qdrant**
+- **React frontend with SSE streaming + typewriter effect + suggested questions**
+- LangSmith observability (optional)
 - Airflow pipeline orchestration
+
+## Quick start (full stack)
+
+```bash
+docker compose up -d         # postgres + qdrant + bootstrap + api + airflow
+# Wait for bootstrap to finish (loads CSV → dbt run → dbt test)
+docker exec olist-api python -m app.rag.indexer   # one-time RAG index
+
+# UI:        http://localhost:8000/ui
+# API docs:  http://localhost:8000/docs
+# Qdrant:    http://localhost:6333/dashboard  (api-key from .env)
+# Airflow:   http://localhost:8080  (admin/admin)
+```
+
+## Frontend dev (hot reload)
+
+```bash
+cd frontend
+npm install
+npm run dev   # http://localhost:5173 (proxies API to :8000)
+npm run build # builds into ../app/ui/static/dist/
+```
 
 ## 1) Environment setup
 
