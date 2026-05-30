@@ -5,12 +5,22 @@ import asyncio
 import contextvars
 import enum
 import json
+import logging
 import threading
 from collections.abc import AsyncIterator, Callable
 from typing import Any
 
 from app.config import get_settings
 from app.observability import configure_langsmith
+
+logger = logging.getLogger("app.agent.tools")
+logger.setLevel(logging.INFO)
+if not logger.handlers:
+    _h = logging.StreamHandler()
+    _h.setFormatter(logging.Formatter("[%(asctime)s] %(name)s  %(message)s",
+                                       datefmt="%H:%M:%S"))
+    logger.addHandler(_h)
+    logger.propagate = False
 
 configure_langsmith()
 
@@ -90,6 +100,14 @@ def emit_tool(
     cb = _TOOL_EMITTER.get()
     if cb is None:
         return
+    snippet = (detail or "")[:60].replace("\n", " ")
+    logger.info(
+        "emit_tool(%s, %s, %s)%s",
+        parent,
+        tool,
+        status,
+        f"  detail={snippet!r}" if snippet else "",
+    )
     try:
         cb(
             {
