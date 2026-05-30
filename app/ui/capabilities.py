@@ -23,6 +23,7 @@ UI_CAPABILITIES: dict[str, Any] = {
         {"label": "Tra schema", "command": "/schema payment"},
         {"label": "Dinh nghia", "command": "/definition gmv"},
         {"label": "Chay SQL", "command": "/sql SELECT * FROM serving.kpi_overview"},
+        {"label": "Tim tren mang", "command": "Tin tuc thuong mai dien tu Brazil 2024"},
         {"label": "Tat SQL", "command": "/rule sql off"},
     ],
     "slash_commands": {

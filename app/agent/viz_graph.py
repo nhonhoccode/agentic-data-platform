@@ -21,6 +21,7 @@ from typing import Any
 from langgraph.graph import END, START, StateGraph
 from typing_extensions import TypedDict
 
+from app.agent.core import emit_tool
 from app.agent.llm import llm_invoke_text
 from app.agent.viz import build_chart, _detect_columns
 
@@ -89,12 +90,18 @@ def _heuristic_spec(rows: list[dict[str, Any]], question: str) -> dict[str, Any]
 
 
 def _code_generation_node(state: VizState) -> VizState:
+    is_fix = bool(state.get("error")) and bool(state.get("history"))
+    label_start = "Sửa spec biểu đồ" if is_fix else "Sinh code biểu đồ"
+    emit_tool("viz_agent", "viz_code_gen", label_start, "start")
+
     rows = state.get("rows", [])
     if not rows:
+        emit_tool("viz_agent", "viz_code_gen", "Không có dữ liệu để vẽ", "error")
         return {**state, "spec": {}, "error": "no_rows"}
 
     numeric_cols, label_cols = _detect_columns(rows)
     if not numeric_cols:
+        emit_tool("viz_agent", "viz_code_gen", "Không có cột numeric", "error")
         return {**state, "spec": {}, "error": "no_numeric_columns"}
 
     error = state.get("error")
@@ -125,9 +132,16 @@ def _code_generation_node(state: VizState) -> VizState:
         except json.JSONDecodeError:
             spec = {}
 
+    fallback_used = False
     if not spec or "value_column" not in spec:
         spec = _heuristic_spec(rows, state.get("question", ""))
+        fallback_used = True
 
+    spec_preview = json.dumps(spec or {}, ensure_ascii=False)[:160]
+    label_done = (
+        "Đã sinh spec (heuristic fallback)" if fallback_used else "Đã sinh spec biểu đồ"
+    )
+    emit_tool("viz_agent", "viz_code_gen", label_done, "done", detail=spec_preview)
     return {
         **state,
         "spec": spec,
@@ -137,10 +151,12 @@ def _code_generation_node(state: VizState) -> VizState:
 
 
 def _code_execution_node(state: VizState) -> VizState:
+    emit_tool("viz_agent", "viz_code_exec", "Render biểu đồ", "start")
     spec = state.get("spec") or {}
     rows = state.get("rows", [])
 
     if not spec or "value_column" not in spec:
+        emit_tool("viz_agent", "viz_code_exec", "Spec rỗng", "error")
         return {**state, "chart": None, "error": "empty_spec"}
 
     value_col = spec["value_column"]
@@ -148,10 +164,25 @@ def _code_execution_node(state: VizState) -> VizState:
     chart_type = spec.get("chart_type", "bar")
 
     if not rows:
+        emit_tool("viz_agent", "viz_code_exec", "Không có dữ liệu", "error")
         return {**state, "chart": None, "error": "no_rows"}
     if value_col not in rows[0]:
+        emit_tool(
+            "viz_agent",
+            "viz_code_exec",
+            "Cột value không tồn tại",
+            "error",
+            detail=value_col,
+        )
         return {**state, "chart": None, "error": f"value_column_not_found: {value_col}"}
     if label_col and label_col not in rows[0]:
+        emit_tool(
+            "viz_agent",
+            "viz_code_exec",
+            "Cột label không tồn tại",
+            "error",
+            detail=label_col,
+        )
         return {**state, "chart": None, "error": f"label_column_not_found: {label_col}"}
 
     series: list[dict[str, Any]] = []
@@ -164,6 +195,13 @@ def _code_execution_node(state: VizState) -> VizState:
         series.append({"x": x, "y": y})
 
     if len(series) < 2:
+        emit_tool(
+            "viz_agent",
+            "viz_code_exec",
+            "Không đủ điểm dữ liệu",
+            "error",
+            detail=f"points={len(series)}",
+        )
         return {**state, "chart": None, "error": "not_enough_points"}
 
     if chart_type == "bar":
@@ -182,6 +220,13 @@ def _code_execution_node(state: VizState) -> VizState:
         "series": series,
         "title": f"{value_col} theo {label_col}" if label_col else value_col,
     }
+    emit_tool(
+        "viz_agent",
+        "viz_code_exec",
+        f"Vẽ {chart['chart_type']} ({len(series)} điểm)",
+        "done",
+        detail=f"{value_col} / {label_col or 'index'}",
+    )
     return {
         **state,
         "chart": chart,
@@ -191,13 +236,21 @@ def _code_execution_node(state: VizState) -> VizState:
 
 
 def _code_fixbug_node(state: VizState) -> VizState:
+    next_attempt = state.get("attempts", 0) + 1
+    emit_tool(
+        "viz_agent",
+        "viz_fixbug",
+        f"Sửa spec biểu đồ (lần {next_attempt})",
+        "done",
+        detail=(state.get("error") or "")[:160],
+    )
     history = list(state.get("history", []))
     history.append(
         {"spec": json.dumps(state.get("spec", {})), "error": state.get("error", "")}
     )
     return {
         **state,
-        "attempts": state.get("attempts", 0) + 1,
+        "attempts": next_attempt,
         "history": history,
         "selected_tools": [*state.get("selected_tools", []), "viz_fixbug"],
     }

@@ -18,6 +18,7 @@ class RuleConfig(BaseModel):
 class HistoryTurn(BaseModel):
     role: str
     content: str
+    metadata: dict[str, Any] | None = None
 
 
 class ChatRequest(BaseModel):
@@ -25,6 +26,11 @@ class ChatRequest(BaseModel):
     context: dict[str, Any] = Field(default_factory=dict)
     rules: RuleConfig = Field(default_factory=RuleConfig)
     history: list[HistoryTurn] = Field(default_factory=list)
+    web_search_enabled: bool = False
+    conversation_id: str | None = None
+    # When True, _web_search_node bypasses the domain classifier — used by the
+    # "Vẫn tra cứu Internet" CTA so out-of-domain blocks are user-overridable.
+    force_web_search: bool = False
 
 
 class TracePayload(BaseModel):
@@ -37,7 +43,7 @@ class TracePayload(BaseModel):
 
 
 class Block(BaseModel):
-    type: Literal["text", "table", "figure", "warnings"]
+    type: Literal["text", "table", "figure", "warnings", "web_search"]
     title: str | None = None
     payload: dict[str, Any] = Field(default_factory=dict)
 

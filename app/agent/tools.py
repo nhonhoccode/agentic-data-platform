@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from app.config import get_settings
 from app.definitions.business_glossary import BUSINESS_DEFINITIONS
 from app.services.query_service import QueryService
 
@@ -161,3 +162,69 @@ def sql_from_question(question: str) -> str:
 def query_data_tool(question_or_sql: str, limit: int = 200) -> dict[str, Any]:
     sql_text = sql_from_question(question_or_sql)
     return service.query_data(sql_text=sql_text, limit=limit)
+
+
+def web_search_tool(query: str, max_results: int | None = None) -> dict[str, Any]:
+    """Tavily web search. Returns {query, answer, results[], count, error?}.
+
+    Gracefully no-ops when TAVILY_API_KEY is empty so the agent never crashes.
+    """
+    settings = get_settings()
+    if not settings.tavily_api_key:
+        return {
+            "query": query,
+            "answer": None,
+            "results": [],
+            "count": 0,
+            "error": "tavily_disabled",
+        }
+
+    limit = int(max_results or settings.web_search_max_results or 5)
+
+    # 1h cache so repeat queries don't burn Tavily quota (free tier 1000/mo).
+    try:
+        from app.agent.cache import get as cache_get
+
+        cached = cache_get("tavily", f"{query}|{limit}")
+        if isinstance(cached, dict) and "results" in cached:
+            return {**cached, "cached": True}
+    except Exception:  # noqa: BLE001
+        pass
+
+    try:
+        from tavily import TavilyClient
+
+        client = TavilyClient(api_key=settings.tavily_api_key)
+        resp = client.search(query=query, max_results=limit, include_answer=True)
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "query": query,
+            "answer": None,
+            "results": [],
+            "count": 0,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+
+    results_raw = resp.get("results") or []
+    results = [
+        {
+            "title": r.get("title") or r.get("url") or "",
+            "url": r.get("url") or "",
+            "snippet": (r.get("content") or "")[:400],
+            "score": r.get("score"),
+        }
+        for r in results_raw
+    ]
+    payload = {
+        "query": query,
+        "answer": resp.get("answer"),
+        "results": results,
+        "count": len(results),
+    }
+    try:
+        from app.agent.cache import set as cache_set
+
+        cache_set("tavily", f"{query}|{limit}", payload, ttl_sec=3600)
+    except Exception:  # noqa: BLE001
+        pass
+    return payload

@@ -6,6 +6,7 @@ from typing import Any
 from langgraph.graph import END, START, StateGraph
 from typing_extensions import TypedDict
 
+from app.agent.core import emit_tool
 from app.agent.llm import llm_invoke_text
 from app.agent.tools import sql_from_question
 from app.db.sql_safety import UnsafeQueryError
@@ -89,7 +90,28 @@ def _strip_code_fence(text: str) -> str:
 
 
 def _table_selection_node(state: SQLState) -> SQLState:
-    hits = retrieve_tables(state["question"], limit=6)
+    emit_tool("sql_agent", "table_selection", "Tra cứu schema gợi ý", "start")
+    try:
+        hits = retrieve_tables(state["question"], limit=6)
+    except Exception as exc:  # noqa: BLE001
+        emit_tool(
+            "sql_agent",
+            "table_selection",
+            "Tra cứu schema thất bại",
+            "error",
+            detail=f"{type(exc).__name__}: {exc}"[:200],
+        )
+        raise
+    sample = ", ".join(
+        h.get("payload", {}).get("fully_qualified", "") for h in hits[:3]
+    )
+    emit_tool(
+        "sql_agent",
+        "table_selection",
+        f"Tra cứu schema ({len(hits)} bảng)",
+        "done",
+        detail=sample or None,
+    )
     return {
         **state,
         "schema_hits": hits,
@@ -100,15 +122,18 @@ def _table_selection_node(state: SQLState) -> SQLState:
 
 
 def _query_generation_node(state: SQLState) -> SQLState:
+    is_fix = bool(state.get("error"))
+    label_start = "Sửa lại SQL theo lỗi trước" if is_fix else "Sinh câu SQL"
+    emit_tool("sql_agent", "query_generation", label_start, "start")
+
     schema_context = state.get("schema_context") or "(không có context)"
-    error = state.get("error")
     history = state.get("history", [])
-    if error:
+    if is_fix:
         prompt = _SQL_FIX_PROMPT_TEMPLATE.format(
             question=state["question"],
             schema_context=schema_context,
             sql=state.get("sql", ""),
-            error=error,
+            error=state.get("error"),
             history=_format_history(history),
         )
     else:
@@ -118,10 +143,15 @@ def _query_generation_node(state: SQLState) -> SQLState:
         )
 
     sql_text = llm_invoke_text(prompt)
+    fallback_used = False
     if not sql_text:
         sql_text = sql_from_question(state["question"])
+        fallback_used = True
 
     cleaned = _strip_code_fence(sql_text)
+    preview = " ".join(cleaned.split())[:160]
+    label_done = "Đã sinh SQL (fallback template)" if fallback_used else "Đã sinh SQL"
+    emit_tool("sql_agent", "query_generation", label_done, "done", detail=preview)
     return {
         **state,
         "sql": cleaned,
@@ -132,23 +162,57 @@ def _query_generation_node(state: SQLState) -> SQLState:
 def _query_execution_node(state: SQLState) -> SQLState:
     sql_text = state.get("sql", "")
     if not sql_text:
+        emit_tool("sql_agent", "query_execution", "Không có SQL để chạy", "error")
         return {**state, "error": "empty_sql"}
 
+    emit_tool("sql_agent", "query_execution", "Đang chạy SQL trên Postgres", "start")
     try:
         result = _service.query_data(sql_text=sql_text, limit=200)
-        return {
-            **state,
-            "raw_result": result,
-            "error": None,
-            "selected_tools": [*state.get("selected_tools", []), "query_execution"],
-        }
     except UnsafeQueryError as exc:
+        emit_tool(
+            "sql_agent",
+            "query_execution",
+            "SQL không an toàn",
+            "error",
+            detail=str(exc)[:200],
+        )
         return {**state, "error": f"unsafe_query: {exc}"}
     except Exception as exc:  # noqa: BLE001
+        emit_tool(
+            "sql_agent",
+            "query_execution",
+            f"Lỗi khi chạy SQL ({type(exc).__name__})",
+            "error",
+            detail=str(exc)[:200],
+        )
         return {**state, "error": f"{type(exc).__name__}: {exc}"}
+
+    row_count = result.get("row_count")
+    if row_count is None and isinstance(result.get("data"), list):
+        row_count = len(result["data"])
+    emit_tool(
+        "sql_agent",
+        "query_execution",
+        f"Chạy SQL xong ({row_count or 0} dòng)",
+        "done",
+    )
+    return {
+        **state,
+        "raw_result": result,
+        "error": None,
+        "selected_tools": [*state.get("selected_tools", []), "query_execution"],
+    }
 
 
 def _bug_fixing_node(state: SQLState) -> SQLState:
+    next_attempt = state.get("attempts", 0) + 1
+    emit_tool(
+        "sql_agent",
+        "bug_fixing",
+        f"Phát hiện lỗi SQL — thử sửa (lần {next_attempt})",
+        "done",
+        detail=(state.get("error") or "")[:200],
+    )
     history = list(state.get("history", []))
     history.append(
         {
@@ -158,7 +222,7 @@ def _bug_fixing_node(state: SQLState) -> SQLState:
     )
     return {
         **state,
-        "attempts": state.get("attempts", 0) + 1,
+        "attempts": next_attempt,
         "history": history,
         "selected_tools": [*state.get("selected_tools", []), "bug_fixing"],
     }

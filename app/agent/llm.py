@@ -14,6 +14,30 @@ def get_chat_llm() -> Any | None:
     if provider in {"", "none", "off", "disabled"}:
         return None
 
+    if provider == "custom":
+        if not (
+            settings.custom_llm_api_key
+            and settings.custom_llm_base_url
+            and settings.llm_model
+        ):
+            return None
+
+        from langchain_openai import ChatOpenAI
+
+        kwargs: dict[str, Any] = {
+            "model": settings.llm_model,
+            "api_key": settings.custom_llm_api_key,
+            "base_url": settings.custom_llm_base_url,
+            "temperature": settings.temperature,
+            "timeout": 30,
+            "max_retries": 1,
+        }
+        if not settings.llm_enable_thinking:
+            kwargs["extra_body"] = {
+                "chat_template_kwargs": {"enable_thinking": False},
+            }
+        return ChatOpenAI(**kwargs)
+
     if provider == "gemini" and settings.gemini_api_key:
         from langchain_google_genai import ChatGoogleGenerativeAI
 

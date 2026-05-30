@@ -41,6 +41,35 @@ SQL_KEYWORDS = {
     "doanh thu",
 }
 HELP_KEYWORDS = {"help", "what can you do", "làm được gì", "ban lam duoc gi", "capabilities", "commands"}
+WEB_SEARCH_KEYWORDS = {
+    "tìm trên mạng",
+    "tim tren mang",
+    "tìm trên google",
+    "tim tren google",
+    "search trên mạng",
+    "search internet",
+    "google",
+    "tin tức",
+    "tin tuc",
+    "news",
+    "latest news",
+    "current",
+    "hiện tại",
+    "hien tai",
+    "today",
+    "hôm nay",
+    "hom nay",
+    "bây giờ",
+    "bay gio",
+    "latest",
+    "mới nhất",
+    "moi nhat",
+    "2024",
+    "2025",
+    "2026",
+    "internet",
+    "web search",
+}
 SMALLTALK_KEYWORDS = {
     "hi",
     "hello",
@@ -117,6 +146,9 @@ def classify_intent(question: str) -> str:
     if _looks_like_sql(q):
         return "sql_query"
 
+    if any(keyword in q for keyword in WEB_SEARCH_KEYWORDS):
+        return "web_search"
+
     if any(keyword in q for keyword in HELP_KEYWORDS):
         return "help_request"
 
@@ -180,6 +212,7 @@ def route_for_intent(intent: str) -> str:
         "schema_search": "retrieval_agent",
         "business_definition": "retrieval_agent",
         "kpi_summary": "insight_agent",
+        "web_search": "web_search_agent",
         "help_request": "chat_agent",
         "chitchat": "chat_agent",
     }

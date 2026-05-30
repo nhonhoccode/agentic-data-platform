@@ -19,16 +19,16 @@ export function StepIndicator({ steps }: StepIndicatorProps) {
         <div
           key={`${step.node}-${idx}`}
           className={cn(
-            "flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs",
-            step.status === "active" && "border-primary bg-primary/10 text-primary",
-            step.status === "done" && "border-emerald-300 bg-emerald-50 text-emerald-700",
-            step.status === "pending" && "border-border text-muted-foreground",
+            "flex items-center gap-1.5 rounded-md border-2 border-black px-2.5 py-1 text-xs font-bold neo-shadow-sm",
+            step.status === "active" && "bg-pink-300 animate-pulse",
+            step.status === "done" && "bg-lime-300",
+            step.status === "pending" && "bg-white text-zinc-500",
           )}
         >
-          {step.status === "active" && <Loader2 className="h-3 w-3 animate-spin" />}
-          {step.status === "done" && <CheckCircle2 className="h-3 w-3" />}
-          {step.status === "pending" && <Circle className="h-3 w-3" />}
-          <span>{step.label}</span>
+          {step.status === "active" && <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={3} />}
+          {step.status === "done" && <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={3} />}
+          {step.status === "pending" && <Circle className="h-3.5 w-3.5" strokeWidth={3} />}
+          <span className="uppercase tracking-tight">{step.label}</span>
         </div>
       ))}
     </div>

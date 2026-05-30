@@ -291,6 +291,9 @@ def _agent_response_from_workflow(
         blocks.append(table)
     if figure:
         blocks.append(figure)
+    web_search = result.get("web_search")
+    if isinstance(web_search, dict) and (web_search.get("results") or web_search.get("error")):
+        blocks.append(Block(type="web_search", title="Kết quả web search", payload=web_search))
     if result.get("warnings"):
         blocks.append(Block(type="warnings", payload={"warnings": result.get("warnings", [])}))
 
@@ -305,6 +308,7 @@ def _agent_response_from_workflow(
             sql=result.get("sql"),
             confidence=result.get("confidence"),
             warnings=result.get("warnings", []),
+            blocked=bool(result.get("blocked_reason")),
         ),
     }
 
@@ -314,6 +318,17 @@ def run_chat(payload: ChatRequest) -> dict[str, Any]:
     rules = payload.rules
     message_lower = message.lower()
     context = _merge_context(payload.context)
+    web_search_enabled = bool(getattr(payload, "web_search_enabled", False))
+    force_web_search = bool(getattr(payload, "force_web_search", False))
+    # History may arrive as Pydantic HistoryTurn instances OR as plain dicts
+    # (the sync /ui/proxy/chat route overrides payload.history with rows pulled
+    # straight from chatstore via model_copy, which doesn't re-validate). Be
+    # tolerant either way.
+    history_payload = [
+        h.model_dump() if hasattr(h, "model_dump") else h
+        for h in (payload.history or [])
+        if h is not None
+    ]
 
     if message_lower in {"/help", "help"}:
         return {
@@ -326,7 +341,7 @@ def run_chat(payload: ChatRequest) -> dict[str, Any]:
 
     if _is_help_request(message_lower):
         if rules.allow_agent:
-            workflow_result = run_workflow(message, context)
+            workflow_result = run_workflow(message, context, history=history_payload, web_search_enabled=web_search_enabled, force_web_search=force_web_search)
             return _agent_response_from_workflow(
                 result=workflow_result,
                 rules=rules,
@@ -542,7 +557,7 @@ def run_chat(payload: ChatRequest) -> dict[str, Any]:
     inferred_intent = classify_intent(message)
     if inferred_intent == "chitchat":
         if rules.allow_agent:
-            workflow_result = run_workflow(message, context)
+            workflow_result = run_workflow(message, context, history=history_payload, web_search_enabled=web_search_enabled, force_web_search=force_web_search)
             return _agent_response_from_workflow(
                 result=workflow_result,
                 rules=rules,
@@ -560,7 +575,7 @@ def run_chat(payload: ChatRequest) -> dict[str, Any]:
 
     if inferred_intent == "help_request":
         if rules.allow_agent:
-            workflow_result = run_workflow(message, context)
+            workflow_result = run_workflow(message, context, history=history_payload, web_search_enabled=web_search_enabled, force_web_search=force_web_search)
             return _agent_response_from_workflow(
                 result=workflow_result,
                 rules=rules,
@@ -605,7 +620,7 @@ def run_chat(payload: ChatRequest) -> dict[str, Any]:
             "trace": _trace(intent=inferred_intent, blocked=True, warnings=[reason]),
         }
 
-    result = run_workflow(message, context)
+    result = run_workflow(message, context, history=history_payload, web_search_enabled=web_search_enabled, force_web_search=force_web_search)
     return _agent_response_from_workflow(
         result=result,
         rules=rules,

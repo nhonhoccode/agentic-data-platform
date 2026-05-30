@@ -62,16 +62,21 @@ export function SuggestedQuestions({ onPick, variant = "initial", intent }: Sugg
   const group = intent ? CATEGORY_BY_INTENT[intent] || "initial" : "initial";
   const items = SUGGESTIONS_GROUPS[group] ?? SUGGESTIONS_GROUPS.initial;
 
+  const tileColors = ["bg-yellow-300", "bg-lime-300", "bg-cyan-300", "bg-pink-300", "bg-orange-300", "bg-violet-300"];
+
   if (variant === "compact") {
     return (
       <div className="flex flex-wrap gap-1.5">
-        {items.slice(0, 4).map((s) => (
+        {items.slice(0, 4).map((s, i) => (
           <button
             key={s.text}
             onClick={() => onPick(s.text)}
-            className="flex items-center gap-1 rounded-full border border-primary/20 bg-primary/5 px-2.5 py-1 text-xs text-primary hover:bg-primary/10 transition-colors"
+            className={cn(
+              "flex items-center gap-1.5 rounded-md border-2 border-black px-2.5 py-1 text-xs font-bold neo-shadow-sm neo-press",
+              tileColors[i % tileColors.length],
+            )}
           >
-            <s.icon className="h-3 w-3" />
+            <s.icon className="h-3.5 w-3.5" strokeWidth={3} />
             <span>{s.text}</span>
           </button>
         ))}
@@ -81,22 +86,24 @@ export function SuggestedQuestions({ onPick, variant = "initial", intent }: Sugg
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <Lightbulb className="h-3.5 w-3.5" />
+      <div className="inline-flex items-center gap-1.5 rounded-md border-2 border-black bg-yellow-300 px-2.5 py-1 text-xs font-black uppercase tracking-wide neo-shadow-sm">
+        <Lightbulb className="h-3.5 w-3.5" strokeWidth={3} />
         <span>Gợi ý câu hỏi</span>
       </div>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        {items.map((s) => (
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {items.map((s, i) => (
           <button
             key={s.text}
             onClick={() => onPick(s.text)}
             className={cn(
-              "group flex items-start gap-2 rounded-xl border bg-card p-3 text-left text-sm transition-all",
-              "hover:border-primary/40 hover:bg-primary/5 hover:shadow-sm",
+              "flex items-start gap-2 rounded-md border-2 border-black p-3 text-left text-sm font-bold neo-shadow neo-press",
+              tileColors[i % tileColors.length],
             )}
           >
-            <s.icon className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary" />
-            <span className="text-foreground/80 group-hover:text-foreground">{s.text}</span>
+            <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-sm border-2 border-black bg-white">
+              <s.icon className="h-4 w-4" strokeWidth={3} />
+            </span>
+            <span className="pt-0.5">{s.text}</span>
           </button>
         ))}
       </div>

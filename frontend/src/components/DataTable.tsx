@@ -15,34 +15,36 @@ export function DataTable({ rows, maxRows = 50 }: DataTableProps) {
   if (!rows.length) return null;
 
   return (
-    <div className="overflow-x-auto rounded-lg border">
-      <table className="min-w-full text-sm">
-        <thead className="bg-muted">
-          <tr>
-            {columns.map((col) => (
-              <th key={col} className="border-b px-3 py-2 text-left font-medium text-muted-foreground">
-                {col}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.slice(0, maxRows).map((row, idx) => (
-            <tr key={idx} className="hover:bg-muted/40">
+    <div className="rounded-md border-2 border-black bg-white neo-shadow">
+      <div className="max-h-80 overflow-auto">
+        <table className="min-w-full text-sm">
+          <thead className="sticky top-0 z-10 bg-yellow-300 border-b-2 border-black">
+            <tr>
               {columns.map((col) => (
-                <td key={col} className="border-b px-3 py-1.5">
-                  {formatCell(row[col])}
-                </td>
+                <th key={col} className="border-r-2 border-black last:border-r-0 px-3 py-2 text-left font-black uppercase tracking-tight text-black">
+                  {col}
+                </th>
               ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
-      {rows.length > maxRows && (
-        <div className="border-t bg-muted/40 px-3 py-1.5 text-xs text-muted-foreground">
-          Hiển thị {maxRows} / {rows.length} dòng
-        </div>
-      )}
+          </thead>
+          <tbody>
+            {rows.slice(0, maxRows).map((row, idx) => (
+              <tr key={idx} className="border-b-2 border-black last:border-b-0 hover:bg-yellow-100 font-medium">
+                {columns.map((col) => (
+                  <td key={col} className="border-r-2 border-black last:border-r-0 px-3 py-1.5">
+                    {formatCell(row[col])}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="border-t-2 border-black bg-lime-200 px-3 py-1.5 text-xs font-bold">
+        {rows.length > maxRows
+          ? `Hiển thị ${maxRows} / ${rows.length} dòng • cuộn trong bảng`
+          : `${rows.length} dòng • cuộn trong bảng`}
+      </div>
     </div>
   );
 }

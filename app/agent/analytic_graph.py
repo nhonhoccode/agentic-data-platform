@@ -21,6 +21,7 @@ from app.agent.analytic import (
     drill_down_summary,
     time_series_summary,
 )
+from app.agent.core import emit_tool
 
 
 class AnalyticState(TypedDict, total=False):
@@ -67,34 +68,65 @@ def _branch_router(state: AnalyticState) -> str:
 
 
 def _correlation_node(state: AnalyticState) -> AnalyticState:
+    emit_tool("analytic_agent", "correlation", "Phân tích tương quan", "start")
     rows = state.get("rows", [])
+    payload = correlation_summary(rows)
+    emit_tool(
+        "analytic_agent",
+        "correlation",
+        "Tương quan xong",
+        "done",
+        detail=str(payload)[:200] if payload else None,
+    )
     return {
         **state,
         "branch": "correlation",
-        "analytics": {"correlation": correlation_summary(rows)},
+        "analytics": {"correlation": payload},
     }
 
 
 def _drill_down_node(state: AnalyticState) -> AnalyticState:
+    emit_tool("analytic_agent", "drill_down", "Drill-down theo nhóm", "start")
     rows = state.get("rows", [])
+    payload = drill_down_summary(rows)
+    emit_tool(
+        "analytic_agent",
+        "drill_down",
+        "Drill-down xong",
+        "done",
+        detail=str(payload)[:200] if payload else None,
+    )
     return {
         **state,
         "branch": "drill_down",
-        "analytics": {"drill_down": drill_down_summary(rows)},
+        "analytics": {"drill_down": payload},
     }
 
 
 def _other_node(state: AnalyticState) -> AnalyticState:
     """Default branch — produce all summaries so synthesize has rich context."""
+    emit_tool(
+        "analytic_agent",
+        "analytic_combo",
+        "Phân tích tổng hợp (drill-down + tương quan + time-series)",
+        "start",
+    )
     rows = state.get("rows", [])
+    analytics = {
+        "drill_down": drill_down_summary(rows),
+        "correlation": correlation_summary(rows),
+        "time_series": time_series_summary(rows),
+    }
+    emit_tool(
+        "analytic_agent",
+        "analytic_combo",
+        f"Phân tích tổng hợp xong ({len(rows)} dòng)",
+        "done",
+    )
     return {
         **state,
         "branch": "other",
-        "analytics": {
-            "drill_down": drill_down_summary(rows),
-            "correlation": correlation_summary(rows),
-            "time_series": time_series_summary(rows),
-        },
+        "analytics": analytics,
     }
 
 
