@@ -13,6 +13,9 @@ import {
   MessageSquareText,
   Network,
   ShieldCheck,
+  History,
+  UserCheck,
+  Compass,
 } from "lucide-react";
 
 interface LandingProps {
@@ -26,10 +29,12 @@ const TECH_BADGES = [
   "FastAPI",
   "Postgres",
   "Qdrant",
+  "SQLite (auth + chat)",
   "Tavily",
-  "Claude Haiku 4.5",
+  "Multi-LLM (Gemini · DeepSeek · OpenRouter)",
   "Plotly",
-  "Next.js",
+  "React 18 + Vite",
+  "slowapi rate-limit",
 ];
 
 export function Landing({ onEnter }: LandingProps) {
@@ -89,7 +94,7 @@ function Hero({ onEnter }: { onEnter: () => void }) {
         <div className="flex flex-col items-start gap-6">
           <span className="inline-flex items-center gap-1.5 rounded-full border-2 border-black bg-lime-300 px-3 py-1 text-[11px] font-bold uppercase tracking-tight neo-shadow-sm">
             <Zap className="h-3 w-3" strokeWidth={3} />
-            v2 · multi-agent loop + Tavily web search
+            v3 · tier-based auth + chat history + admin panel
           </span>
           <h1 className="text-4xl font-black uppercase leading-[1.05] tracking-tight md:text-5xl xl:text-6xl">
             Phân tích Olist
@@ -315,9 +320,9 @@ function SparkPreview() {
 function Stats() {
   const items = [
     { value: "99,441", label: "đơn hàng Olist", color: "bg-yellow-200" },
-    { value: "23", label: "tool agent đang chạy", color: "bg-cyan-200" },
-    { value: "<2s", label: "median trả lời", color: "bg-lime-200" },
-    { value: "40k+", label: "vector schema/glossary", color: "bg-pink-200" },
+    { value: "85", label: "unit test xanh", color: "bg-cyan-200" },
+    { value: "3", label: "tier RBAC (basic / approved / admin)", color: "bg-lime-200" },
+    { value: "40k+", label: "vector schema / glossary RAG", color: "bg-pink-200" },
   ];
   return (
     <section className="border-b-2 border-black bg-black px-6 py-14 text-white">
@@ -357,7 +362,7 @@ function Pipeline() {
     {
       n: "03",
       title: "Synthesize + stream",
-      body: "Claude Haiku tổng hợp, stream từng token qua SSE. Kết quả kèm citation + biểu đồ tự render.",
+      body: "LLM tổng hợp, stream từng token qua SSE. Kết quả kèm citation + biểu đồ tự render + lưu lịch sử.",
       color: "bg-pink-200",
     },
   ];
@@ -428,7 +433,7 @@ function Features() {
       icon: <MessageSquareText className="h-5 w-5" strokeWidth={3} />,
       color: "bg-yellow-300",
       title: "Timeline live",
-      body: "Mỗi tool call hiện 1 dòng riêng (spinner → check), kèm SQL preview, row count, thời gian chạy. Theo dõi agent realtime như Claude Cowork.",
+      body: "Mỗi tool call hiện 1 dòng riêng (spinner → check), kèm SQL preview, row count, thời gian chạy. Sau khi xong tự thu gọn 'Đã suy nghĩ trong Xs'.",
     },
     {
       icon: <ShieldCheck className="h-5 w-5" strokeWidth={3} />,
@@ -440,7 +445,25 @@ function Features() {
       icon: <Bot className="h-5 w-5" strokeWidth={3} />,
       color: "bg-violet-300",
       title: "Self-host LLM",
-      body: "Hỗ trợ Gemini · DeepSeek · OpenRouter · Anthropic · 9router · vLLM Qwen — đổi provider chỉ bằng 1 biến env, không cần redeploy.",
+      body: "Hỗ trợ Gemini · DeepSeek · OpenRouter · 9router · vLLM Qwen — đổi provider chỉ bằng 1 biến env, không cần redeploy.",
+    },
+    {
+      icon: <UserCheck className="h-5 w-5" strokeWidth={3} />,
+      color: "bg-pink-200",
+      title: "Tier-based access (RBAC)",
+      body: "3 cấp basic / approved / admin. User mới mặc định basic — chỉ chat dữ liệu Olist. Admin duyệt qua panel inline để mở web search · upload · export.",
+    },
+    {
+      icon: <History className="h-5 w-5" strokeWidth={3} />,
+      color: "bg-cyan-200",
+      title: "Lưu lịch sử per-user",
+      body: "SQLite chatstore atomic insert + retry, payload cap 100KB, IDOR-safe ownership check, search title+content, JSON export. Sidebar conversations rename inline.",
+    },
+    {
+      icon: <Compass className="h-5 w-5" strokeWidth={3} />,
+      color: "bg-lime-200",
+      title: "Domain classifier + cache",
+      body: "LLM-judged 'YES/NO' + keyword fallback giữ Tavily chỉ chạy cho câu e-commerce/data. Cache SQLite TTL 24h tiết kiệm token + Tavily quota.",
     },
   ];
   return (
@@ -452,7 +475,7 @@ function Features() {
             Features
           </span>
           <h2 className="text-4xl font-black uppercase tracking-tight">
-            6 tính năng cốt lõi
+            9 tính năng cốt lõi
           </h2>
         </div>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
