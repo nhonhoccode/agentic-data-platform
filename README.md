@@ -63,18 +63,18 @@ Hệ thống được tổ chức theo kiến trúc **3 tầng**:
 
 ## Tính năng chính
 
-- 🤖 **LangGraph multi-agent workflow** — manager-loop điều phối 7 sub-agent: `sql_agent` · `viz_agent` · `analytic_agent` · `time_series_agent` · `retrieval_agent` · `insight_agent` · `web_search_agent` · `chat_agent`
-- 📊 **NL2SQL** trên 4 bảng serving (`kpi_overview`, `kpi_monthly_sales`, `fct_sales_by_category`, `delivery_performance_monthly`) với **self-correction tối đa 3 vòng**
-- 📈 **Auto visualization** — Viz sub-agent tự sinh Plotly spec (bar / line) với fix-bug 2 vòng
-- 🔍 **Hybrid RAG** — Qdrant lưu embedding cho 92 cột schema + 4 thuật ngữ business glossary (bge-m3 1024-dim hoặc Gemini gemini-embedding-001)
-- 🌐 **Tavily Web Search** có **Domain Filter** (LLM judge + keyword fallback) + cache SQLite TTL 24h, có nút "Vẫn tra cứu Internet" override
-- ⚡ **Per-tool SSE streaming** — frontend nhìn thấy từng tool đang chạy theo thời gian thực (start → done → error) qua `ContextVar` emitter, không block event loop
-- 🔐 **Tier-Based RBAC** ba bậc `basic / approved / admin` + AdminPanel inline để duyệt user
-- 💬 **Chat history persistence** — SQLite chat.db, atomic INSERT … SELECT MAX(seq_no)+1 với retry, IDOR-safe, payload cap 100 KB, search title+content, export JSON
-- 🔑 **Stateless auth** — HMAC-SHA256 session token 24h TTL, mật khẩu PBKDF2-SHA256 200k vòng (OWASP 2023)
-- 🚦 **Rate limiting** — slowapi: login 10/min, register 5/min, chat 60/min
-- 🧪 **85 unit tests** xanh trong ~14 giây
-- 🐳 **One-command deployment** — `docker compose up -d`, public qua Cloudflare Tunnel
+- <img src="images/icons/bot.svg" width="18" alt="bot" /> **LangGraph multi-agent workflow** — manager-loop điều phối 7 sub-agent: `sql_agent` · `viz_agent` · `analytic_agent` · `time_series_agent` · `retrieval_agent` · `insight_agent` · `web_search_agent` · `chat_agent`
+- <img src="images/icons/bar-chart.svg" width="18" alt="chart" /> **NL2SQL** trên 4 bảng serving (`kpi_overview`, `kpi_monthly_sales`, `fct_sales_by_category`, `delivery_performance_monthly`) với **self-correction tối đa 3 vòng**
+- <img src="images/icons/trending-up.svg" width="18" alt="trending" /> **Auto visualization** — Viz sub-agent tự sinh Plotly spec (bar / line) với fix-bug 2 vòng
+- <img src="images/icons/search.svg" width="18" alt="search" /> **Hybrid RAG** — Qdrant lưu embedding cho 92 cột schema + 4 thuật ngữ business glossary (bge-m3 1024-dim hoặc Gemini gemini-embedding-001)
+- <img src="images/icons/globe.svg" width="18" alt="globe" /> **Tavily Web Search** có **Domain Filter** (LLM judge + keyword fallback) + cache SQLite TTL 24h, có nút "Vẫn tra cứu Internet" override
+- <img src="images/icons/zap.svg" width="18" alt="zap" /> **Per-tool SSE streaming** — frontend nhìn thấy từng tool đang chạy theo thời gian thực (start → done → error) qua `ContextVar` emitter, không block event loop
+- <img src="images/icons/shield-check.svg" width="18" alt="shield" /> **Tier-Based RBAC** ba bậc `basic / approved / admin` + AdminPanel inline để duyệt user
+- <img src="images/icons/message-square.svg" width="18" alt="message" /> **Chat history persistence** — SQLite chat.db, atomic INSERT … SELECT MAX(seq_no)+1 với retry, IDOR-safe, payload cap 100 KB, search title+content, export JSON
+- <img src="images/icons/key.svg" width="18" alt="key" /> **Stateless auth** — HMAC-SHA256 session token 24h TTL, mật khẩu PBKDF2-SHA256 200k vòng (OWASP 2023)
+- <img src="images/icons/gauge.svg" width="18" alt="gauge" /> **Rate limiting** — slowapi: login 10/min, register 5/min, chat 60/min
+- <img src="images/icons/flask-conical.svg" width="18" alt="test" /> **85 unit tests** xanh trong ~14 giây
+- <img src="images/icons/container.svg" width="18" alt="container" /> **One-command deployment** — `docker compose up -d`, public qua Cloudflare Tunnel
 
 ---
 
