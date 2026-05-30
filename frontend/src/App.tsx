@@ -106,8 +106,8 @@ function ChatScreen({
   const username = session.username;
   const webSearchAllowed = hasFeature(session, "web_search");
   const exportAllowed = hasFeature(session, "export");
-  const isAdmin = !!session.is_admin;
   const tier = session.tier ?? "basic";
+  const isAdmin = !!session.is_admin || tier === "admin";
   const [adminOpen, setAdminOpen] = useState(false);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);

@@ -274,8 +274,11 @@ def set_tier(username: str, tier: str) -> bool:
     with _lock:
         conn = _connect()
         try:
+            # Keep is_admin in sync with tier so admin promotion is one click:
+            # tier=admin ⇒ is_admin=1; tier=basic/approved ⇒ is_admin=0.
             cur = conn.execute(
-                "UPDATE users SET tier=? WHERE username=?", (tier, username)
+                "UPDATE users SET tier=?, is_admin=? WHERE username=?",
+                (tier, 1 if tier == "admin" else 0, username),
             )
             return cur.rowcount > 0
         finally:
@@ -287,10 +290,23 @@ def set_is_admin(username: str, value: bool) -> bool:
     with _lock:
         conn = _connect()
         try:
-            cur = conn.execute(
-                "UPDATE users SET is_admin=? WHERE username=?",
-                (1 if value else 0, username),
-            )
+            # Enabling the admin bit also bumps tier to admin (it would be
+            # contradictory to have is_admin=1 but tier=basic and lose the
+            # admin feature flag). Disabling the bit demotes to approved so
+            # the user keeps web_search/upload/export but loses /admin/*.
+            if value:
+                cur = conn.execute(
+                    "UPDATE users SET is_admin=1, tier='admin' "
+                    "WHERE username=?",
+                    (username,),
+                )
+            else:
+                cur = conn.execute(
+                    "UPDATE users SET is_admin=0, "
+                    "tier=CASE WHEN tier='admin' THEN 'approved' ELSE tier END "
+                    "WHERE username=?",
+                    (username,),
+                )
             return cur.rowcount > 0
         finally:
             conn.close()
