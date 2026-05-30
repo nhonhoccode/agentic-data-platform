@@ -27,7 +27,6 @@ _Per-tool SSE timeline · Tavily Web Search có Domain Filter + Cache · Chat Hi
 - [Kiểm thử](#kiểm-thử)
 - [Hiệu năng](#hiệu-năng)
 - [Triển khai production](#triển-khai-production)
-- [Bảo mật](#bảo-mật)
 - [Tài liệu báo cáo](#tài-liệu-báo-cáo)
 - [Lời cảm ơn](#lời-cảm-ơn)
 
@@ -469,21 +468,6 @@ make logs-bootstrap
 make precommit-install
 make precommit-run
 ```
-
----
-
-## Bảo mật
-
-- **Không commit** API key thật vào `.env` — chỉ commit `.env.example` với placeholder
-- Khi `APP_ENV=prod`, bootstrap kiểm tra các biến `APP_API_KEY`, `APP_ADMIN_PASSWORD`, `APP_SESSION_SECRET`, `POSTGRES_PASSWORD` — raise lỗi nếu vẫn là default yếu (`change-me`, `admin@123`, rỗng)
-- Mật khẩu băm **PBKDF2-HMAC-SHA256** với salt 16 byte ngẫu nhiên + 200.000 vòng iterate (OWASP 2023)
-- Session token **stateless HMAC-SHA256** — secret là `APP_SESSION_SECRET` (fallback `APP_API_KEY`), TTL 24h
-- API đọc dữ liệu qua role read-only riêng `POSTGRES_READONLY_USER` — đề phòng SQL injection từ `query_generation`
-- Mọi truy vấn từ agent đi qua **AST guardrail** chỉ chấp nhận `SELECT`/`WITH`, block `INSERT`/`UPDATE`/`DELETE`/`DDL`
-- Chat persistence **IDOR-safe**: mọi `append_message` JOIN ownership check (`WHERE username=?`) → raise `PermissionError` nếu user không sở hữu conversation
-- **Rate limit** slowapi: `/login` 10/min, `/register` 5/min, `/chat/stream` 60/min
-- Files nhạy cảm gitignore: `data/*.db*`, `docker-compose.override.yml`, `*.env` (trừ `.env.example`)
-- Nếu lỡ commit key, **rotate ngay** và rewrite history bằng `git filter-branch` hoặc `git-filter-repo`
 
 ---
 
