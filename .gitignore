@@ -44,3 +44,5 @@ data/*.db-shm
 # Local Docker Compose overrides (env-specific networking, may inline secrets)
 docker-compose.override.yml
 docker-compose.*.local.yml
+BaoCao_VoTrongNhon_22658441_VN_Legal_RAG.docx
+product
