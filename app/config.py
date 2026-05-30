@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     temperature: float = Field(default=0.0, alias="TEMPERATURE")
     base_url: str = Field(default="", alias="BASE_URL")
 
+    llm_model: str = Field(default="", alias="LLM_MODEL")
+    custom_llm_base_url: str = Field(default="", alias="CUSTOM_LLM_BASE_URL")
+    custom_llm_api_key: str = Field(default="", alias="CUSTOM_LLM_API_KEY")
+
     airflow_admin_username: str = Field(default="admin", alias="AIRFLOW_ADMIN_USERNAME")
     airflow_admin_password: str = Field(default="admin", alias="AIRFLOW_ADMIN_PASSWORD")
     airflow_admin_email: str = Field(default="admin@example.com", alias="AIRFLOW_ADMIN_EMAIL")
@@ -61,6 +65,20 @@ class Settings(BaseSettings):
     )
     embedding_provider: str = Field(default="none", alias="EMBEDDING_PROVIDER")
     embedding_model: str = Field(default="BAAI/bge-m3", alias="EMBEDDING_MODEL")
+
+    tavily_api_key: str = Field(default="", alias="TAVILY_API_KEY")
+    web_search_enabled: bool = Field(default=False, alias="WEB_SEARCH_ENABLED")
+    web_search_max_results: int = Field(default=5, alias="WEB_SEARCH_MAX_RESULTS")
+
+    app_admin_username: str = Field(default="admin", alias="APP_ADMIN_USERNAME")
+    app_admin_password: str = Field(default="admin@123", alias="APP_ADMIN_PASSWORD")
+    app_session_secret: str = Field(default="", alias="APP_SESSION_SECRET")
+    app_session_ttl_sec: int = Field(default=86400, alias="APP_SESSION_TTL_SEC")
+
+    @property
+    def resolved_session_secret(self) -> str:
+        # Fallback to APP_API_KEY so a single secret can be configured.
+        return self.app_session_secret or self.app_api_key or "change-me-session-secret"
 
     @property
     def qdrant_url(self) -> str:

@@ -34,3 +34,13 @@ venv/
 
 # Local notes
 CLAUDE_CHANGES.md
+
+# Runtime SQLite stores (auth + chat history + agent cache — user PII + secrets)
+data/*.db
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
+
+# Local Docker Compose overrides (env-specific networking, may inline secrets)
+docker-compose.override.yml
+docker-compose.*.local.yml
