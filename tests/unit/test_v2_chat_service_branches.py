@@ -109,7 +109,9 @@ def test_run_chat_agent_success_with_series(monkeypatch) -> None:
     monkeypatch.setattr(
         chat_service,
         "run_workflow",
-        lambda question, context=None: {
+        # Accept **kwargs so new run_workflow params (history, web_search_enabled, …)
+        # don't break legacy tests.
+        lambda question, context=None, **kwargs: {
             "intent": "kpi_summary",
             "selected_tools": ["get_kpi_summary"],
             "sql": None,
